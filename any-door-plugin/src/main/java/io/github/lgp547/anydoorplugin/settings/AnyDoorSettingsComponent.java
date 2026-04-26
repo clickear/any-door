@@ -61,6 +61,10 @@ public class AnyDoorSettingsComponent {
 
     private final JBTextField projectBasePath = new JBTextField();
 
+    private final JBTextField jsonTimezone = new JBTextField();
+
+    private final JBTextField jsonDateTimeFormat = new JBTextField();
+
     public AnyDoorSettingsComponent(Project project) {
         componentInit(project);
         mainPanelInit();
@@ -99,6 +103,8 @@ public class AnyDoorSettingsComponent {
                 .addLabeledComponent(new JBLabel("'Spring mvc' port:"), mvcPortText)
                 .addLabeledComponent(new JBLabel("'Spring mvc' context-path:"), mvcWebPathPrefix)
                 .addLabeledComponent(new JBLabel("'Spring mvc' run main module:"), runProjectModePanel2)
+                .addLabeledComponent(new JBLabel("JSON timezone:"), jsonTimezone)
+                .addLabeledComponent(new JBLabel("JSON datetime format:"), jsonDateTimeFormat)
 //                .addLabeledComponent(new JBLabel("Fill dependence name and version:"), runProjectModePanel)
 //                .addComponent(button)
                 .addComponentFillVertically(new JPanel(), 0)
@@ -137,6 +143,12 @@ public class AnyDoorSettingsComponent {
 
         dataFileDir.setText(settings.dataFileDir);
         dataFileDir.setToolTipText("Customize based on project path");
+
+        jsonTimezone.setText(settings.jsonTimezone);
+        jsonTimezone.setToolTipText("Support ZoneId, e.g. Asia/Shanghai");
+
+        jsonDateTimeFormat.setText(settings.jsonDateTimeFormat);
+        jsonDateTimeFormat.setToolTipText("Default LocalDateTime format, e.g. yyyy-MM-dd HH:mm:ss");
 
         projectBasePath.setText(project.getBasePath());
         projectBasePath.setEditable(false);
@@ -241,5 +253,21 @@ public class AnyDoorSettingsComponent {
 
     public void setDataFileDir(String dataFileDir) {
         this.dataFileDir.setText(dataFileDir);
+    }
+
+    public String getJsonTimezone() {
+        return jsonTimezone.getText();
+    }
+
+    public void setJsonTimezone(String jsonTimezone) {
+        this.jsonTimezone.setText(jsonTimezone);
+    }
+
+    public String getJsonDateTimeFormat() {
+        return jsonDateTimeFormat.getText();
+    }
+
+    public void setJsonDateTimeFormat(String jsonDateTimeFormat) {
+        this.jsonDateTimeFormat.setText(jsonDateTimeFormat);
     }
 }

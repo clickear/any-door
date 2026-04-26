@@ -44,6 +44,7 @@ public class AnyDoorService {
     public Object run(AnyDoorRunDto anyDoorDto) {
         try {
             anyDoorDto.verify();
+            JsonUtil.applyConfig(anyDoorDto.getJsonTimezone(), anyDoorDto.getJsonDateTimeFormat());
             Class<?> clazz = Class.forName(anyDoorDto.getClassName());
             Method method = AnyDoorClassUtil.getMethod(clazz, anyDoorDto.getMethodName(), anyDoorDto.getParameterTypes());
             
@@ -81,6 +82,8 @@ public class AnyDoorService {
         
         ClassLoader oldClassLoader = Thread.currentThread().getContextClassLoader();
         try {
+            AnyDoorRunDto anyDoorRunDto = AnyDoorRunDto.parseObj(anyDoorDtoStr);
+            JsonUtil.applyConfig(anyDoorRunDto.getJsonTimezone(), anyDoorRunDto.getJsonDateTimeFormat());
             ClassLoader runClassLoader = getRunClassLoader(method, bean, oldClassLoader);
             Thread.currentThread().setContextClassLoader(runClassLoader);
             return doRun(JsonUtil.toJavaBean(anyDoorDtoStr, AnyDoorRunDto.class), method, bean, startRun, endRun);

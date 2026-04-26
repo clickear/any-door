@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "io.github.lgp547"
-val anyDoorVersion = "2.2.3"
+val anyDoorVersion = "2.2.4"
 version = anyDoorVersion
 
 repositories {

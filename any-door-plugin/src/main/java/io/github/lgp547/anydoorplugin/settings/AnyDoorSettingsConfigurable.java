@@ -55,7 +55,9 @@ public class AnyDoorSettingsConfigurable implements Configurable {
                 !mySettingsComponent.getMvcAddress().equals(settings.mvcAddress) ||
                 !mySettingsComponent.getMvcPort().equals(settings.mvcPort) ||
                 !mySettingsComponent.getMvcWebPathPrefix().equals(settings.mvcWebPathPrefix) ||
-                !mySettingsComponent.getDataFileDir().equals(settings.dataFileDir)
+                !mySettingsComponent.getDataFileDir().equals(settings.dataFileDir) ||
+                !mySettingsComponent.getJsonTimezone().equals(settings.jsonTimezone) ||
+                !mySettingsComponent.getJsonDateTimeFormat().equals(settings.jsonDateTimeFormat)
                 ;
     }
 
@@ -73,6 +75,8 @@ public class AnyDoorSettingsConfigurable implements Configurable {
         settings.mvcPort = mySettingsComponent.getMvcPort();
         settings.mvcWebPathPrefix = mySettingsComponent.getMvcWebPathPrefix();
         settings.dataFileDir = mySettingsComponent.getDataFileDir();
+        settings.jsonTimezone = mySettingsComponent.getJsonTimezone();
+        settings.jsonDateTimeFormat = mySettingsComponent.getJsonDateTimeFormat();
     }
 
     @Override
@@ -88,6 +92,8 @@ public class AnyDoorSettingsConfigurable implements Configurable {
         mySettingsComponent.setMvcPortText(settings.mvcPort);
         mySettingsComponent.setMvcWebPathPrefix(settings.mvcWebPathPrefix);
         mySettingsComponent.setDataFileDir(settings.dataFileDir);
+        mySettingsComponent.setJsonTimezone(settings.jsonTimezone);
+        mySettingsComponent.setJsonDateTimeFormat(settings.jsonDateTimeFormat);
     }
 
     @Override

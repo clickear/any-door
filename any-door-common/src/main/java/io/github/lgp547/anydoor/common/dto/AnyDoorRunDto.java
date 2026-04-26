@@ -53,6 +53,10 @@ public class AnyDoorRunDto {
     private List<String> jarPaths;
     
     private String projectBasePath;
+
+    private String jsonTimezone;
+
+    private String jsonDateTimeFormat;
     
     public String getClassName() {
         return className;
@@ -125,6 +129,22 @@ public class AnyDoorRunDto {
     public void setProjectBasePath(String projectBasePath) {
         this.projectBasePath = projectBasePath;
     }
+
+    public String getJsonTimezone() {
+        return jsonTimezone;
+    }
+
+    public void setJsonTimezone(String jsonTimezone) {
+        this.jsonTimezone = jsonTimezone;
+    }
+
+    public String getJsonDateTimeFormat() {
+        return jsonDateTimeFormat;
+    }
+
+    public void setJsonDateTimeFormat(String jsonDateTimeFormat) {
+        this.jsonDateTimeFormat = jsonDateTimeFormat;
+    }
     
     public void verify() {
         Assert.notNull(className, "className is required");
@@ -147,6 +167,8 @@ public class AnyDoorRunDto {
                 ", concurrent=" + concurrent +
                 ", jarPaths=" + jarPaths +
                 ", projectBasePath='" + projectBasePath + '\'' +
+                ", jsonTimezone='" + jsonTimezone + '\'' +
+                ", jsonDateTimeFormat='" + jsonDateTimeFormat + '\'' +
                 '}';
     }
     
@@ -154,6 +176,8 @@ public class AnyDoorRunDto {
         String className = substringBetween(anyDoorDtoStr, "\"className\":\"", "\"");
         String methodName = substringBetween(anyDoorDtoStr, "\"methodName\":\"", "\"");
         String projectBasePath = substringBetween(anyDoorDtoStr, "\"projectBasePath\":\"", "\"");
+        String jsonTimezone = substringBetween(anyDoorDtoStr, "\"jsonTimezone\":\"", "\"");
+        String jsonDateTimeFormat = substringBetween(anyDoorDtoStr, "\"jsonDateTimeFormat\":\"", "\"");
         List<String> parameterTypes = parseList(anyDoorDtoStr, "parameterTypes");
         List<String> jarPaths = parseList(anyDoorDtoStr, "jarPaths");
         
@@ -163,6 +187,8 @@ public class AnyDoorRunDto {
         anyDoorRunDto.setParameterTypes(parameterTypes);
         anyDoorRunDto.setJarPaths(jarPaths);
         anyDoorRunDto.setProjectBasePath(projectBasePath);
+        anyDoorRunDto.setJsonTimezone(jsonTimezone);
+        anyDoorRunDto.setJsonDateTimeFormat(jsonDateTimeFormat);
         return anyDoorRunDto;
     }
     

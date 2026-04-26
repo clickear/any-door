@@ -35,8 +35,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.lgp547.anydoor.test.dto.Permission;
 import io.github.lgp547.anydoor.test.dto.Role;
 import io.github.lgp547.anydoor.test.dto.User;
-
-import io.github.lgp547.anydoor.util.jackson.AnyDoorTimeDeserializer;
+import io.github.lgp547.anydoor.util.jackson.AnyDoorJacksonConfig;
 import org.springframework.util.Assert;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -273,9 +272,9 @@ public class Bean {
         
         assertIsEquals(dateTimeByISO, LocalDateTime.parse(Bean.dateTimeByISO, DateTimeFormatter.ISO_DATE_TIME));
         
-        assertIsEquals(dateTimeByCom, LocalDateTime.parse(Bean.dateTimeByCom, AnyDoorTimeDeserializer.DATETIME_FORMAT));
+        assertIsEquals(dateTimeByCom, LocalDateTime.parse(Bean.dateTimeByCom, AnyDoorJacksonConfig.getDateTimeFormatter()));
         
-        assertIsEquals(dateTimeByCom1, LocalDateTime.parse(Bean.dateTimeByCom1 + " 00:00:00", AnyDoorTimeDeserializer.DATETIME_FORMAT));
+        assertIsEquals(dateTimeByCom1, LocalDateTime.parse(Bean.dateTimeByCom1 + " 00:00:00", AnyDoorJacksonConfig.getDateTimeFormatter()));
         
     }
     

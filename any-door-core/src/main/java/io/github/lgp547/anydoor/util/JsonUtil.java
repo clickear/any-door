@@ -25,6 +25,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateTimeSerializer;
+import io.github.lgp547.anydoor.util.jackson.AnyDoorJacksonConfig;
 import io.github.lgp547.anydoor.util.jackson.AnyDoorTimeDeserializer;
 
 import java.lang.reflect.Type;
@@ -37,9 +39,18 @@ import java.util.Optional;
 
 public class JsonUtil {
     
-    public static ObjectMapper objectMapper = new ObjectMapper();
+    public static ObjectMapper objectMapper = createObjectMapper();
     
     static {
+    }
+
+    public static synchronized void applyConfig(String timezone, String dateTimeFormat) {
+        AnyDoorJacksonConfig.apply(timezone, dateTimeFormat);
+        objectMapper = createObjectMapper();
+    }
+
+    private static ObjectMapper createObjectMapper() {
+        ObjectMapper objectMapper = new ObjectMapper();
         // 注释处理
         objectMapper.configure(JsonReadFeature.ALLOW_JAVA_COMMENTS.mappedFeature(), true);
         // 序列化处理
@@ -47,13 +58,19 @@ public class JsonUtil {
         objectMapper.configure(JsonReadFeature.ALLOW_BACKSLASH_ESCAPING_ANY_CHARACTER.mappedFeature(), true);
         // 失败处理
         objectMapper.configure(SerializationFeature.FAIL_ON_EMPTY_BEANS, false);
+        objectMapper.configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false);
         objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         // 单引号处理
         objectMapper.configure(JsonParser.Feature.ALLOW_SINGLE_QUOTES, true);
+        // 全局时区和默认日期格式
+        objectMapper.setTimeZone(AnyDoorJacksonConfig.getTimeZone());
+        objectMapper.setDateFormat(AnyDoorJacksonConfig.getDateFormat());
         // 时间处理
         JavaTimeModule javaTimeModule = new JavaTimeModule();
         javaTimeModule.addDeserializer(LocalDateTime.class, new AnyDoorTimeDeserializer());
+        javaTimeModule.addSerializer(LocalDateTime.class, new LocalDateTimeSerializer(AnyDoorJacksonConfig.getDateTimeFormatter()));
         objectMapper.registerModule(javaTimeModule);
+        return objectMapper;
     }
     
     public static <T> T toJavaBean(String content, Type valueType) {

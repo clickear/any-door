@@ -27,29 +27,23 @@ import io.github.lgp547.anydoor.util.LambdaUtil;
 import java.io.IOException;
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
-
 public class AnyDoorTimeDeserializer extends JsonDeserializer<LocalDateTime> {
-    
-    public static final DateTimeFormatter DATETIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-    
-    public static final LocalDateTimeDeserializer INSTANCE = new LocalDateTimeDeserializer(DATETIME_FORMAT);
     
     @Override
     public LocalDateTime deserialize(JsonParser jsonParser, DeserializationContext deserializationContext) throws IOException, JacksonException {
         LocalDateTime dateTime;
         String text = jsonParser.getText();
         
-        dateTime = LambdaUtil.runNotExc(() -> LocalDateTime.ofInstant(Instant.ofEpochMilli(Long.parseLong(text)), ZoneId.systemDefault()));
+        dateTime = LambdaUtil.runNotExc(() -> LocalDateTime.ofInstant(Instant.ofEpochMilli(Long.parseLong(text)), AnyDoorJacksonConfig.getZoneId()));
         if (null == dateTime) {
-            dateTime = LambdaUtil.runNotExc(() -> getLocalDateTime(jsonParser, deserializationContext, INSTANCE));
+            dateTime = LambdaUtil.runNotExc(() -> getLocalDateTime(jsonParser, deserializationContext,
+                    new LocalDateTimeDeserializer(AnyDoorJacksonConfig.getDateTimeFormatter())));
         }
         if (null == dateTime) {
             dateTime = LambdaUtil.runNotExc(() -> getLocalDateTime(jsonParser, deserializationContext, LocalDateTimeDeserializer.INSTANCE));
         }
         if (null == dateTime) {
-            dateTime = LambdaUtil.runNotExc(() -> LocalDateTime.parse(text + " 00:00:00", AnyDoorTimeDeserializer.DATETIME_FORMAT));
+            dateTime = LambdaUtil.runNotExc(() -> LocalDateTime.parse(text + " 00:00:00", AnyDoorJacksonConfig.getDateTimeFormatter()));
         }
         return dateTime;
     }

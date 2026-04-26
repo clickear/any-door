@@ -133,6 +133,9 @@ public class AnyDoorPerformed {
         String anyDoorCommonJarPath = ImportNewUtil.getPluginLibPath(AnyDoorInfo.ANY_DOOR_COMMON_JAR);
         jsonObjectReq.add("jarPaths", JsonUtil.toJsonArray(List.of(anyDoorJarPath, dependenceJarFilePath, anyDoorCommonJarPath)));
         jsonObjectReq.addProperty("projectBasePath", project.getBasePath());
+        AnyDoorSettingsState settings = project.getService(AnyDoorSettingsState.class);
+        jsonObjectReq.addProperty("jsonTimezone", settings.jsonTimezone);
+        jsonObjectReq.addProperty("jsonDateTimeFormat", settings.jsonDateTimeFormat);
         return jsonObjectReq.toString();
     }
 

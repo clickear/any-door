@@ -40,6 +40,10 @@ public class AnyDoorSettingsState implements PersistentStateComponent<AnyDoorSet
 
     public String dataFileDir = "/.idea/any-door-data/";
 
+    public String jsonTimezone = "Asia/Shanghai";
+
+    public String jsonDateTimeFormat = "yyyy-MM-dd HH:mm:ss";
+
     @Nullable
     @Override
     public AnyDoorSettingsState getState() {
