@@ -18,6 +18,7 @@
 package io.github.lgp547.anydoor.util;
 
 import io.github.lgp547.anydoor.common.util.AnyDoorBeanUtil;
+import io.github.lgp547.anydoor.util.jackson.AnyDoorJacksonConfig;
 import org.springframework.beans.SimpleTypeConverter;
 import org.springframework.core.MethodParameter;
 import org.springframework.core.ResolvableType;
@@ -27,6 +28,11 @@ import org.springframework.util.ClassUtils;
 import java.lang.reflect.Field;
 import java.net.URI;
 import java.net.URL;
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.time.temporal.Temporal;
 import java.util.Date;
 import java.util.Locale;
@@ -69,8 +75,11 @@ public class BeanUtil {
         if (obj == null && field.getType().isInterface() && (value.contains("->") || value.contains("::"))) {
             obj = LambdaUtil.runNotExc(() -> LambdaUtil.compileExpression(value, field.getGenericType()));
         }
-        if (obj == null) {
+        if (obj == null && !BeanUtil.isSimpleProperty(field.getType())) {
             obj = LambdaUtil.runNotExc(() -> BeanUtil.toBean(field.getType(), value));
+        }
+        if (obj == null) {
+            assertSimplePropertyParsed(field.getType(), value);
         }
         return obj;
     }
@@ -95,10 +104,74 @@ public class BeanUtil {
     }
     
     public static Object simpleTypeConvertIfNecessary(MethodParameter parameter, String value) {
-        return SIMPLE_TYPE_CONVERTER.convertIfNecessary(value, parameter.getParameterType(), parameter);
+        return simpleTypeConvertIfNecessary(value, parameter.getParameterType());
     }
     
     public static <T> T simpleTypeConvertIfNecessary(Object value, Class<T> clazz) {
+        if (value instanceof String && Date.class.isAssignableFrom(clazz)) {
+            return clazz.cast(parseDate((String) value, clazz));
+        }
         return SIMPLE_TYPE_CONVERTER.convertIfNecessary(value, clazz);
+    }
+
+    private static Date parseDate(String value, Class<?> clazz) {
+        String text = value == null ? null : value.trim();
+        if (text == null || text.isEmpty()) {
+            return null;
+        }
+        if (text.startsWith("\"") && text.endsWith("\"") && text.length() > 1) {
+            text = text.substring(1, text.length() - 1);
+        }
+
+        Date date = LambdaUtil.runNotExc(() -> new Date(Long.parseLong(text)));
+        if (date == null) {
+            date = LambdaUtil.runNotExc(() -> AnyDoorJacksonConfig.getDateFormat().parse(text));
+        }
+        if (date == null) {
+            date = LambdaUtil.runNotExc(() -> toDate(LocalDateTime.parse(text, AnyDoorJacksonConfig.getDateTimeFormatter())));
+        }
+        if (date == null) {
+            date = LambdaUtil.runNotExc(() -> toDate(LocalDateTime.parse(text, DateTimeFormatter.ISO_DATE_TIME)));
+        }
+        if (date == null) {
+            date = LambdaUtil.runNotExc(() -> toDate(LocalDate.parse(text, DateTimeFormatter.ISO_LOCAL_DATE)));
+        }
+        if (date == null) {
+            return null;
+        }
+        if (java.sql.Date.class.isAssignableFrom(clazz)) {
+            return new java.sql.Date(date.getTime());
+        }
+        if (Timestamp.class.isAssignableFrom(clazz)) {
+            return new Timestamp(date.getTime());
+        }
+        return date;
+    }
+
+    private static Date toDate(LocalDateTime localDateTime) {
+        return Date.from(localDateTime.atZone(AnyDoorJacksonConfig.getZoneId()).toInstant());
+    }
+
+    private static Date toDate(LocalDate localDate) {
+        return Date.from(localDate.atStartOfDay(AnyDoorJacksonConfig.getZoneId()).toInstant());
+    }
+
+    public static void assertSimplePropertyParsed(Class<?> clazz, String value) {
+        if (!isSimpleProperty(clazz)) {
+            return;
+        }
+        String text = value == null ? null : value.trim();
+        if (text == null || text.isEmpty()) {
+            return;
+        }
+        throw new IllegalArgumentException(buildSimplePropertyParseMessage(clazz, text));
+    }
+
+    private static String buildSimplePropertyParseMessage(Class<?> clazz, String value) {
+        if (Date.class.isAssignableFrom(clazz)) {
+            return "Date param parse fail. value[" + value + "], supported formats: timestamp, "
+                    + AnyDoorJacksonConfig.getDateTimePattern() + ", yyyy-MM-dd'T'HH:mm:ss, yyyy-MM-dd";
+        }
+        return "Param parse fail. type[" + clazz.getName() + "], value[" + value + "]";
     }
 }

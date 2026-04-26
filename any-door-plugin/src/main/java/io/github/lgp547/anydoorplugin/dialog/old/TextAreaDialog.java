@@ -2,10 +2,12 @@ package io.github.lgp547.anydoorplugin.dialog.old;
 
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.DialogWrapper;
+import com.intellij.openapi.ui.ValidationInfo;
 import com.intellij.psi.PsiParameterList;
 import io.github.lgp547.anydoorplugin.dialog.JSONEditor;
 import io.github.lgp547.anydoorplugin.dto.ParamCacheDto;
 import io.github.lgp547.anydoorplugin.settings.AnyDoorSettingsState;
+import io.github.lgp547.anydoorplugin.util.ParamValidationUtil;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
@@ -15,6 +17,7 @@ public class TextAreaDialog extends DialogWrapper {
     private final JSONEditor textArea;
     private final ContentPanel contentPanel;
     private final AnyDoorSettingsState service;
+    private final PsiParameterList psiParameterList;
 
     private Runnable okAction;
 
@@ -22,6 +25,7 @@ public class TextAreaDialog extends DialogWrapper {
         super(project, true, IdeModalityType.MODELESS);
         setTitle(title);
         this.service = service;
+        this.psiParameterList = psiParameterList;
         textArea = new JSONEditor(paramCacheDto.content(), psiParameterList, project);
         contentPanel = new ContentPanel(textArea);
         contentPanel.addCacheButtonListener(e -> textArea.genCacheContent());
@@ -58,8 +62,20 @@ public class TextAreaDialog extends DialogWrapper {
 
     @Override
     protected void doOKAction() {
+        if (doValidate() != null) {
+            return;
+        }
         okAction.run();
         super.doOKAction();
+    }
+
+    @Override
+    protected @Nullable ValidationInfo doValidate() {
+        ValidationInfo validationInfo = ParamValidationUtil.validate(textArea.getText(), psiParameterList, service.jsonDateTimeFormat, textArea);
+        if (validationInfo != null) {
+            return validationInfo;
+        }
+        return super.doValidate();
     }
 
     @Override

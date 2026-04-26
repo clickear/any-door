@@ -28,6 +28,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.Date;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
@@ -94,6 +95,8 @@ public class Bean {
     public static final String dateTimeByCom = "2023-01-01 00:00:00";
     
     public static final String dateTimeByCom1 = "2023-01-02";
+
+    public static final String utilDateByCom1 = "2026-04-21";
     
     public static final Permission permission = new Permission(1L, "permissionName");
     
@@ -133,6 +136,7 @@ public class Bean {
         jsonNode.put("dateTimeByISO", dateTimeByISO);
         jsonNode.put("dateTimeByCom", dateTimeByCom);
         jsonNode.put("dateTimeByCom1", dateTimeByCom1);
+        jsonNode.put("utilDateByCom1", utilDateByCom1);
         jsonNode.putPOJO("longs", longs);
         jsonNode.putPOJO("permission", permission);
         jsonNode.put("intValue", intValue);
@@ -276,6 +280,12 @@ public class Bean {
         
         assertIsEquals(dateTimeByCom1, LocalDateTime.parse(Bean.dateTimeByCom1 + " 00:00:00", AnyDoorJacksonConfig.getDateTimeFormatter()));
         
+    }
+
+    public void testUtilDate(Date utilDateByCom1) {
+        Date expected = Date.from(LocalDate.parse(Bean.utilDateByCom1, DateTimeFormatter.ISO_LOCAL_DATE)
+                .atStartOfDay(AnyDoorJacksonConfig.getZoneId()).toInstant());
+        assertIsEquals(utilDateByCom1, expected);
     }
     
     public void listLong(List<Long> longs) {

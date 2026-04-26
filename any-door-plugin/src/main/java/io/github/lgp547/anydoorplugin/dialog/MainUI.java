@@ -8,6 +8,7 @@ import javax.swing.*;
 import com.intellij.icons.AllIcons;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.DialogWrapper;
+import com.intellij.openapi.ui.ValidationInfo;
 import io.github.lgp547.anydoorplugin.dialog.components.MainPanel;
 import io.github.lgp547.anydoorplugin.dialog.event.Event;
 import io.github.lgp547.anydoorplugin.dialog.event.EventType;
@@ -15,7 +16,9 @@ import io.github.lgp547.anydoorplugin.dialog.event.DefaultMulticaster;
 import io.github.lgp547.anydoorplugin.dialog.event.Listener;
 import io.github.lgp547.anydoorplugin.dialog.event.impl.DataSyncEvent;
 import io.github.lgp547.anydoorplugin.dialog.utils.EventHelper;
+import io.github.lgp547.anydoorplugin.settings.AnyDoorSettingsState;
 import io.github.lgp547.anydoorplugin.util.JsonUtil;
+import io.github.lgp547.anydoorplugin.util.ParamValidationUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -57,12 +60,29 @@ public class MainUI extends DialogWrapper implements Listener {
 
     @Override
     protected void doOKAction() {
+        if (doValidate() != null) {
+            return;
+        }
         if (Objects.nonNull(okAction)) {
             JSONEditor editor = panel.getEditor();
             String text = JsonUtil.compressJson(editor.getText());
             okAction.accept(text);
         }
         super.doOKAction();
+    }
+
+    @Override
+    protected @Nullable ValidationInfo doValidate() {
+        if (panel == null) {
+            return super.doValidate();
+        }
+        AnyDoorSettingsState settings = project.getService(AnyDoorSettingsState.class);
+        ValidationInfo validationInfo = ParamValidationUtil.validate(panel.getEditor().getText(), context.getParamList(),
+                settings == null ? null : settings.jsonDateTimeFormat, panel.getEditor());
+        if (validationInfo != null) {
+            return validationInfo;
+        }
+        return super.doValidate();
     }
 
     @Override

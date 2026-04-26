@@ -192,8 +192,11 @@ public class AnyDoorHandlerMethod extends HandlerMethod {
         if (obj == null && parameter.getParameterType().isInterface() && (value.contains("->") || value.contains("::"))) {
             obj = LambdaUtil.runNotExc(() -> LambdaUtil.compileExpression(value, parameter.getNestedGenericParameterType()));
         }
-        if (obj == null) {
+        if (obj == null && !BeanUtil.isSimpleProperty(parameter.getParameterType())) {
             obj = LambdaUtil.runNotExc(() -> BeanUtil.toBean(parameter.getParameterType(), value));
+        }
+        if (obj == null) {
+            BeanUtil.assertSimplePropertyParsed(parameter.getParameterType(), value);
         }
         if (obj == null) {
             System.out.println("any-door run param [" + parameter.getParameterType().getName() + "] is null");
