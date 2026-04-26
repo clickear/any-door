@@ -39,6 +39,9 @@ build/
 .vscode/
 
 .*
+!.github/
+!.github/workflows/
+!.github/workflows/*.yml
 
 dependency-reduced-pom.xml
 .gradle

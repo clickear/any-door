@@ -79,14 +79,27 @@ public class AnyDoorService {
             return null;
         }
         
+        ClassLoader oldClassLoader = Thread.currentThread().getContextClassLoader();
         try {
-            Thread.currentThread().setContextClassLoader(AnyDoorService.class.getClassLoader());
+            ClassLoader runClassLoader = getRunClassLoader(method, bean, oldClassLoader);
+            Thread.currentThread().setContextClassLoader(runClassLoader);
             return doRun(JsonUtil.toJavaBean(anyDoorDtoStr, AnyDoorRunDto.class), method, bean, startRun, endRun);
         } catch (Throwable throwable) {
             System.err.println("anyDoorService run exception. param [" + anyDoorDtoStr + "]");
             Optional.ofNullable(throwable.getCause()).map(Throwable::getCause).map(Throwable::getCause).orElse(throwable).printStackTrace();
             return null;
+        } finally {
+            Thread.currentThread().setContextClassLoader(oldClassLoader);
         }
+    }
+
+    private static ClassLoader getRunClassLoader(Method method, Object bean, ClassLoader oldClassLoader) {
+        ClassLoader classLoader = Optional.ofNullable(method).map(Method::getDeclaringClass).map(Class::getClassLoader).orElse(null);
+        if (classLoader != null) {
+            return classLoader;
+        }
+        classLoader = Optional.ofNullable(bean).map(Object::getClass).map(Class::getClassLoader).orElse(null);
+        return classLoader != null ? classLoader : oldClassLoader;
     }
     
     public Object doRun(AnyDoorRunDto anyDoorDto, Method method, Object bean, Runnable startRun, Runnable endRun) {

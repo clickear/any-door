@@ -111,27 +111,41 @@ public class AnyDoorHandlerMethod extends HandlerMethod {
     }
     
     public Object doInvoke(Runnable startRun, Object[] args) {
+        ClassLoader oldClassLoader = Thread.currentThread().getContextClassLoader();
+        ClassLoader invokeClassLoader = getInvokeClassLoader(oldClassLoader);
         try {
+            Thread.currentThread().setContextClassLoader(invokeClassLoader);
             startRun.run();
         } catch (Exception e) {
             e.printStackTrace();
         }
-        Object bean = getBean();
-        if (bean instanceof Proxy) {
-            InvocationHandler invocationHandler = Proxy.getInvocationHandler(bean);
-            try {
-                if (invocationHandler instanceof AopProxy) {
-                    return invocationHandler.invoke(bean, getBridgedMethod(), args);
-                }
-            } catch (Throwable e) {
-                e.printStackTrace();
-            }
-        }
         try {
+            Object bean = getBean();
+            if (bean instanceof Proxy) {
+                InvocationHandler invocationHandler = Proxy.getInvocationHandler(bean);
+                try {
+                    if (invocationHandler instanceof AopProxy) {
+                        return invocationHandler.invoke(bean, getBridgedMethod(), args);
+                    }
+                } catch (Throwable e) {
+                    e.printStackTrace();
+                }
+            }
             return getBridgedMethod().invoke(bean, args);
         } catch (IllegalAccessException | InvocationTargetException e) {
             throw new RuntimeException(e);
+        } finally {
+            Thread.currentThread().setContextClassLoader(oldClassLoader);
         }
+    }
+
+    private ClassLoader getInvokeClassLoader(ClassLoader oldClassLoader) {
+        ClassLoader classLoader = Optional.ofNullable(getBridgedMethod()).map(Method::getDeclaringClass).map(Class::getClassLoader).orElse(null);
+        if (classLoader != null) {
+            return classLoader;
+        }
+        classLoader = Optional.ofNullable(getBean()).map(Object::getClass).map(Class::getClassLoader).orElse(null);
+        return classLoader != null ? classLoader : oldClassLoader;
     }
     
     protected Object[] getArgs(Map<String, Object> contentMap) {
