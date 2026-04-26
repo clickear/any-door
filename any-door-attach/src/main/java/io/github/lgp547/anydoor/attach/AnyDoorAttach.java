@@ -103,28 +103,32 @@ public class AnyDoorAttach {
             }
             byte[] javaFileBytes = Files.readAllBytes(javaFile.toPath());
             String fileContent = new String(javaFileBytes, StandardCharsets.UTF_8);
-            if (!fileContent.contains("AnyDoorIsUpdatePreRun:true")) {
-                return runnable;
-            }
+            boolean needUpdatePreRun = fileContent.contains("AnyDoorIsUpdatePreRun:true");
             
             Class<?> cls = searchClass(inst, className);
-            boolean isNullCls = cls == null;
+            File classFile = new File(classFilePath);
+            if (needUpdatePreRun || !classFile.exists()) {
+                compilerJavaFile(javaFilePath);
+            }
             
-            // 编译java文件
-            compilerJavaFile(javaFilePath);
+            if (needUpdatePreRun) {
+                String newContent = fileContent.replace("AnyDoorIsUpdatePreRun:true", "AnyDoorIsUpdatePreRun:false");
+                FileUtils.writeByteArrayToFile(javaFile, newContent.getBytes());
+            }
             
-            // 替换成false
-            String newContent = fileContent.replace("AnyDoorIsUpdatePreRun:true", "AnyDoorIsUpdatePreRun:false");
-            FileUtils.writeByteArrayToFile(javaFile, newContent.getBytes());
-            
-            if (isNullCls) {
+            if (cls == null) {
                 // 将编译后的class文件加载到内存中
+                if (!classFile.exists()) {
+                    return runnable;
+                }
                 URLClassLoader urlClassLoader = new URLClassLoader(new URL[]{new File(baseJavaPath).toURI().toURL()});
                 cls = Class.forName(className, true, urlClassLoader);
             }
             
-            byte[] bytes = Files.readAllBytes(new File(classFilePath).toPath());
-            inst.redefineClasses(new ClassDefinition(cls, bytes));
+            if (needUpdatePreRun) {
+                byte[] bytes = Files.readAllBytes(classFile.toPath());
+                inst.redefineClasses(new ClassDefinition(cls, bytes));
+            }
             
             // 使用反射调用类的方法
             Object instance = cls.getDeclaredConstructor().newInstance();
