@@ -152,8 +152,11 @@ public class AnyDoorAttach {
         
         // 获取Java编译器
         JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+        if (compiler == null) {
+            throw new RuntimeException("JavaCompiler not found");
+        }
         // 编译文件
-        int run = compiler.run(null, null, null, javaPath);
+        int run = compiler.run(null, null, null, "-proc:none", javaPath);
         if (run != 0) {
             throw new RuntimeException("编译失败");
         }
