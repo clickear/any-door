@@ -80,8 +80,9 @@ public class PreRunDialogWrapper extends DialogWrapper {
         PsiFile file = PsiDocumentManager.getInstance(project).getPsiFile(component.getDocument());
         if (file instanceof PsiCodeFragmentImpl fileImpl) {
             String importsToString = fileImpl.importsToString();
-            List<String> imports = Arrays.stream(importsToString.split(",")).collect(Collectors.toList());
-            doUpdateFile(JavaFileInfoUtil.toAnyDoorInjectedClassStr(imports, component.getDocument().getText()));
+            List<String> imports = JavaFileInfoUtil.normalizeImportStrs(Arrays.stream(importsToString.split(",")).collect(Collectors.toList()));
+            String content = JavaFileInfoUtil.normalizePreRunContent(component.getDocument().getText());
+            doUpdateFile(JavaFileInfoUtil.toAnyDoorInjectedClassStr(imports, content));
         }
     }
 

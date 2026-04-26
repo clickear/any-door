@@ -4,7 +4,9 @@ import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 public class JavaFileInfoUtil {
 
@@ -52,10 +54,10 @@ public class JavaFileInfoUtil {
 
     public static String toAnyDoorInjectedClassStr(List<String> importStrs, String content) {
         StringBuilder sb = new StringBuilder();
-        for (String importStr : importStrs) {
+        for (String importStr : normalizeImportStrs(importStrs)) {
             sb.append("import ").append(importStr).append(";\n");
         }
-        return sb.append(String.format(TEMPLATE, content)).toString();
+        return sb.append(String.format(TEMPLATE, normalizePreRunContent(content))).toString();
     }
 
     public static JavaFileInfo readFile2(String javaFilePath) {
@@ -87,6 +89,64 @@ public class JavaFileInfoUtil {
             e.printStackTrace();
         }
         return JavaFileInfo.emptyContent(javaFilePath);
+    }
+
+    public static List<String> normalizeImportStrs(List<String> importStrs) {
+        Set<String> result = new LinkedHashSet<>();
+        if (importStrs == null) {
+            return new ArrayList<>();
+        }
+        for (String importStr : importStrs) {
+            if (importStr == null) {
+                continue;
+            }
+            String[] split = importStr.split("[,\\n]");
+            for (String item : split) {
+                String normalize = item.trim();
+                if (normalize.isEmpty()) {
+                    continue;
+                }
+                if (normalize.startsWith("import ")) {
+                    normalize = normalize.substring(7).trim();
+                }
+                if (normalize.endsWith(";")) {
+                    normalize = normalize.substring(0, normalize.length() - 1).trim();
+                }
+                if (!normalize.isEmpty()) {
+                    result.add(normalize);
+                }
+            }
+        }
+        return new ArrayList<>(result);
+    }
+
+    public static String normalizePreRunContent(String content) {
+        if (content == null || content.isBlank()) {
+            return "";
+        }
+        String normalized = content.replace("\r\n", "\n").trim();
+        normalized = removeImportAndPackageLines(normalized).trim();
+
+        if (normalized.contains("public class AnyDoorInjectedClass")) {
+            return extractMethodBody(normalized).trim();
+        }
+        if (normalized.contains("public void preRun()")) {
+            return extractMethodBody("public class AnyDoorInjectedClass {\n" + normalized + "\n}").trim();
+        }
+        return normalized;
+    }
+
+    private static String removeImportAndPackageLines(String content) {
+        StringBuilder sb = new StringBuilder();
+        String[] lines = content.split("\n");
+        for (String line : lines) {
+            String trim = line.trim();
+            if (trim.startsWith("import ") || trim.startsWith("package ")) {
+                continue;
+            }
+            sb.append(line).append("\n");
+        }
+        return sb.toString();
     }
 
     private static String extractMethodBody(String classString) {
