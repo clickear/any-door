@@ -123,18 +123,18 @@ public class BeanUtil {
             text = text.substring(1, text.length() - 1);
         }
 
-        Date date = LambdaUtil.runNotExc(() -> new Date(Long.parseLong(text)));
+        Date date = tryParseEpochMillis(text);
         if (date == null) {
-            date = LambdaUtil.runNotExc(() -> AnyDoorJacksonConfig.getDateFormat().parse(text));
+            date = tryParseConfiguredDate(text);
         }
         if (date == null) {
-            date = LambdaUtil.runNotExc(() -> toDate(LocalDateTime.parse(text, AnyDoorJacksonConfig.getDateTimeFormatter())));
+            date = tryParseLocalDateTime(text, AnyDoorJacksonConfig.getDateTimeFormatter());
         }
         if (date == null) {
-            date = LambdaUtil.runNotExc(() -> toDate(LocalDateTime.parse(text, DateTimeFormatter.ISO_DATE_TIME)));
+            date = tryParseLocalDateTime(text, DateTimeFormatter.ISO_DATE_TIME);
         }
         if (date == null) {
-            date = LambdaUtil.runNotExc(() -> toDate(LocalDate.parse(text, DateTimeFormatter.ISO_LOCAL_DATE)));
+            date = tryParseLocalDate(text);
         }
         if (date == null) {
             return null;
@@ -154,6 +154,38 @@ public class BeanUtil {
 
     private static Date toDate(LocalDate localDate) {
         return Date.from(localDate.atStartOfDay(AnyDoorJacksonConfig.getZoneId()).toInstant());
+    }
+
+    private static Date tryParseEpochMillis(String text) {
+        try {
+            return new Date(Long.parseLong(text));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static Date tryParseConfiguredDate(String text) {
+        try {
+            return AnyDoorJacksonConfig.getDateFormat().parse(text);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static Date tryParseLocalDateTime(String text, DateTimeFormatter formatter) {
+        try {
+            return toDate(LocalDateTime.parse(text, formatter));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static Date tryParseLocalDate(String text) {
+        try {
+            return toDate(LocalDate.parse(text, DateTimeFormatter.ISO_LOCAL_DATE));
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     public static void assertSimplePropertyParsed(Class<?> clazz, String value) {
