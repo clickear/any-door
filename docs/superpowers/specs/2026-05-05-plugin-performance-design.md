@@ -1,212 +1,212 @@
-# Plugin Performance Optimization Design
+# 插件性能优化设计
 
-## Background
+## 背景
 
-The IntelliJ plugin currently exhibits general UI stutter rather than a single isolated slow path. Based on the current implementation, the most likely causes are synchronous file IO, PSI lookup, full-list filtering, and event-driven refresh work being performed on or too close to the UI thread.
+当前 IntelliJ 插件的问题更接近“整体存在卡顿感”，而不是某一个单点路径特别慢。结合现有实现，最可能的原因是同步文件 IO、PSI 查询、全量列表过滤，以及事件触发后的刷新工作运行在 UI 线程上，或者距离 UI 线程过近。
 
-The user wants broad reduction of plugin stutter, accepts moderate internal refactoring, and accepts asynchronous data hydration as long as functionality and visual behavior remain broadly unchanged.
+用户希望尽可能降低插件各处卡顿，接受中等程度的内部重构，并接受异步补齐数据，只要功能和界面体验整体上保持不变。
 
-## Goals
+## 目标
 
-- Reduce visible UI stutter across common plugin interactions.
-- Keep existing plugin features, persisted data format, and overall UI structure unchanged.
-- Prefer moving expensive work off the EDT rather than redesigning features.
-- Avoid large architectural rewrites that would substantially increase regression risk.
+- 降低插件常见交互中的可见卡顿。
+- 保持现有插件功能、持久化数据格式和整体 UI 结构不变。
+- 优先将耗时工作移出 EDT，而不是重做功能设计。
+- 避免大幅架构重写，控制回归风险。
 
-## Non-Goals
+## 非目标
 
-- No redesign of plugin workflows or user-facing interaction model.
-- No changes to persisted JSON schema.
-- No full replacement of the event system or data layer.
-- No speculative optimization of code paths not tied to observed stutter risks.
+- 不重做插件工作流或用户可见交互模型。
+- 不修改持久化 JSON 结构。
+- 不整体替换事件系统或数据层。
+- 不做与当前卡顿问题无关的投机式优化。
 
-## Current Bottlenecks
+## 当前瓶颈
 
-### 1. Synchronous context loading
+### 1. 上下文同步加载
 
-`DataContext.getClassDataContext()` may synchronously:
+`DataContext.getClassDataContext()` 可能同步执行以下工作：
 
-- read parameter data from disk
-- resolve PSI classes
-- build `ClassDataContext`
+- 从磁盘读取参数数据
+- 解析 PSI 类
+- 构建 `ClassDataContext`
 
-This work is used by UI entry points and file-switch handling, so it can block the EDT.
+这些逻辑会被 UI 入口和文件切换逻辑调用，因此有阻塞 EDT 的风险。
 
-### 2. Immediate refresh on file selection changes
+### 2. 文件切换后立即刷新
 
-`ParamListUI` reacts to editor selection changes by immediately reading and rebuilding table state. Rapid file switching can queue repeated heavy refreshes for transient selections.
+`ParamListUI` 在编辑器选中文件变化后会立刻读取数据并重建表格状态。快速切换文件时，这会对一些短暂的中间选中状态重复触发较重的刷新。
 
-### 3. Search performs full filtering on every keystroke
+### 3. 搜索在每次输入时全量过滤
 
-Search currently filters the full in-memory index on each document change and performs repeated lowercase conversion during matching. This increases input latency as cached history grows.
+当前搜索会在每次文本变更时对完整索引做一次过滤，并在匹配过程中重复执行小写转换。随着缓存历史增长，这会增加输入延迟。
 
-### 4. Event fan-out is synchronous
+### 4. 事件广播为同步分发
 
-`DefaultMulticaster.fireEvent()` dispatches listeners synchronously. If listeners perform data sync or UI refresh work inline, the source thread inherits that latency.
+`DefaultMulticaster.fireEvent()` 当前同步分发监听器。如果某个监听器内联执行了数据同步或 UI 刷新，触发事件的线程会直接承担这部分耗时。
 
-### 5. Mixed preparation and apply phases
+### 5. 数据准备与 UI 应用混在同一条路径
 
-Several flows combine data loading, transformation, and UI application in one call path. Even where final UI updates must run on EDT, the preparation phase does not.
+多个流程把数据读取、转换和 UI 应用放在同一个调用链里。即使最终的 UI 更新必须运行在 EDT，前面的准备工作也不需要。
 
-## Recommended Approach
+## 推荐方案
 
-Use moderate refactoring to separate background preparation from EDT application, add cancellation-aware refresh scheduling, and avoid repeated work during rapid interactions.
+采用中等重构，把后台准备和 EDT 应用明确拆开，增加可取消的刷新调度，并减少快速交互时的重复工作。
 
-## Design
+## 设计方案
 
-### A. Asynchronous class context loading
+### A. 类上下文异步加载
 
-Introduce an async loading path for class data used by the parameter list and method dialog flows.
+为参数列表和方法弹窗相关的类数据引入异步加载路径。
 
-Behavior:
+行为：
 
-- UI requests a class context load without blocking.
-- Data file reads and PSI/class resolution run in a background task.
-- The result is applied on EDT only if it is still current.
-- If a newer request supersedes an older one, the older result is dropped.
+- UI 发起类上下文加载请求时不阻塞当前线程。
+- 数据文件读取和 PSI/类解析在后台任务中执行。
+- 结果只在仍然是当前请求时才回到 EDT 应用。
+- 如果新请求覆盖旧请求，旧结果直接丢弃。
 
-Expected outcome:
+预期效果：
 
-- opening plugin UI no longer stalls while waiting for data and PSI work
-- switching files avoids immediate blocking refreshes
+- 打开插件 UI 时不再因等待数据和 PSI 查询而明显停顿
+- 切换文件时避免立即同步阻塞刷新
 
-### B. Refresh coalescing for file-switch driven updates
+### B. 文件切换驱动的刷新合并
 
-Add a lightweight refresh coordinator in `ParamListUI` or a nearby helper.
+在 `ParamListUI` 或邻近辅助类中增加一个轻量刷新协调器。
 
-Behavior:
+行为：
 
-- Track the last requested class/file identity.
-- Skip refresh when the selected class has not materially changed.
-- Use a short debounce/coalescing window for rapid file selection changes.
-- Cancel or ignore stale background refresh results.
+- 记录最近一次请求的类或文件标识。
+- 如果当前选中的类没有实质变化，则跳过刷新。
+- 对快速连续的文件选择变化增加一个很短的防抖或合并窗口。
+- 过期的后台刷新结果被取消或忽略。
 
-Expected outcome:
+预期效果：
 
-- less repeated table rebuild work during quick editor navigation
-- reduced jitter from bursty selection changes
+- 快速编辑器切换时减少重复构建表格
+- 降低因连续选中文件变化带来的抖动
 
-### C. Search debounce and normalized index fields
+### C. 搜索防抖与标准化索引字段
 
-Optimize the search popup without changing user-visible semantics.
+在不改变用户可见语义的前提下优化搜索弹窗。
 
-Behavior:
+行为：
 
-- debounce search input by a short interval
-- normalize searchable text once per index item instead of per comparison
-- perform filtering off the EDT when result sets are non-trivial
-- cap displayed results to a practical upper bound
+- 为搜索输入增加短时间防抖
+- 每条索引数据的可搜索文本只标准化一次，而不是每次比较都重复处理
+- 当结果集不小时，在后台线程做过滤
+- 为展示结果设置合理上限
 
-Expected outcome:
+预期效果：
 
-- smoother typing in search
-- lower CPU churn when history grows
+- 搜索输入更顺滑
+- 缓存历史变多后 CPU 消耗更平稳
 
-### D. Async follow-up for event-triggered refresh work
+### D. 事件触发后的重刷新改为异步跟进
 
-Keep the existing multicaster contract but change expensive listeners to schedule refresh work rather than executing it inline.
+保留现有事件广播契约，但把耗时监听逻辑改成“安排刷新”，而不是“立即刷新”。
 
-Behavior:
+行为：
 
-- data change events remain logically synchronous from the caller perspective
-- listeners that need re-read/rebuild operations enqueue background refreshes
-- final UI mutation remains on EDT
+- 数据变更事件的逻辑触发顺序保持不变
+- 需要重新读取或重建数据的监听器改为投递后台刷新任务
+- 最终 UI 变更仍然回到 EDT
 
-Expected outcome:
+预期效果：
 
-- less blocking propagation from save/delete/update event chains
-- lower probability that one slow listener stalls unrelated UI actions
+- save/delete/update 事件链路上的阻塞降低
+- 某个慢监听器拖住其他 UI 操作的概率下降
 
-### E. Explicit prepare/apply split in UI flows
+### E. UI 刷新中的 prepare/apply 显式拆分
 
-For major UI refresh paths, separate:
+对主要 UI 刷新路径做两段式拆分：
 
-- prepare: file IO, data cloning, filtering, PSI lookup, transformation
-- apply: table model replacement, component state sync, repaint-sensitive actions
+- prepare：文件 IO、数据克隆、过滤、PSI 查询、转换
+- apply：表格模型替换、组件状态同步、与重绘敏感相关的动作
 
-Only the apply step runs on EDT.
+只有 apply 阶段运行在 EDT。
 
-Expected outcome:
+预期效果：
 
-- better responsiveness even when full refresh still occurs
-- clearer boundaries for future profiling and optimization
+- 即使仍需做完整刷新，界面响应也会更好
+- 后续性能排查和优化边界更清晰
 
-## Proposed Implementation Scope
+## 预计实现范围
 
-Primary code areas expected to change:
+主要涉及的代码区域：
 
 - `any-door-plugin/src/main/java/io/github/lgp547/anydoorplugin/dialog/ParamListUI.java`
 - `any-door-plugin/src/main/java/io/github/lgp547/anydoorplugin/dialog/DataContext.java`
 - `any-door-plugin/src/main/java/io/github/lgp547/anydoorplugin/dialog/MainUI.java`
 - `any-door-plugin/src/main/java/io/github/lgp547/anydoorplugin/dialog/event/DefaultMulticaster.java`
-- supporting helpers near dialog/data packages as needed
+- dialog/data 附近按需补充的辅助类
 
-Possible small supporting changes:
+可能存在的小型支撑改动：
 
-- add a reusable background task helper for stale-result suppression
-- add normalized search fields or cached derived values for `ParamIndexData` handling
+- 增加一个可复用的后台任务辅助类，用于抑制过期结果
+- 为 `ParamIndexData` 相关搜索补一层标准化字段或派生值缓存
 
-## Concurrency and Correctness Rules
+## 并发与正确性约束
 
-- Never mutate Swing components off EDT.
-- Background results must verify they still correspond to the latest requested file/class/query before applying.
-- Existing persisted data must remain source-of-truth compatible.
-- Async loading may temporarily show empty or old UI state, but must converge quickly to current data.
-- Save behavior remains async as today; this work focuses on removing read/refresh stalls.
+- 不允许在 EDT 之外直接修改 Swing 组件。
+- 后台结果在应用前必须确认仍然对应最新的文件、类或搜索请求。
+- 现有持久化数据必须保持兼容，仍然作为唯一事实来源。
+- 异步加载期间可以暂时展示空态或旧状态，但必须快速收敛到当前数据。
+- 保存逻辑保持现有异步写入方式，本次工作重点是消除读取和刷新导致的卡顿。
 
-## Risks
+## 风险
 
-### Risk 1. Stale async result overwrites current state
+### 风险 1：过期异步结果覆盖当前状态
 
-Mitigation:
+缓解方式：
 
-- use monotonically increasing request tokens or current-key checks before applying results
+- 使用递增请求令牌，或在应用前校验当前 key 是否仍匹配
 
-### Risk 2. UI appears inconsistent during async hydration
+### 风险 2：异步补齐期间 UI 状态看起来不一致
 
-Mitigation:
+缓解方式：
 
-- use predictable transient states
-- only replace visible data once a complete current result is ready
+- 使用可预期的过渡态
+- 仅在完整且仍然最新的结果准备好后替换可见数据
 
-### Risk 3. Event ordering regressions
+### 风险 3：事件顺序相关回归
 
-Mitigation:
+缓解方式：
 
-- keep logical event emission order unchanged
-- only defer expensive downstream refresh work, not the state mutation itself
+- 保持逻辑事件触发顺序不变
+- 只延后耗时的后续刷新，不延后状态本身的更新
 
-### Risk 4. Hidden EDT work remains in helper methods
+### 风险 4：辅助方法内部仍残留隐藏的 EDT 重活
 
-Mitigation:
+缓解方式：
 
-- audit helper calls used in refresh paths
-- explicitly document which methods are safe for background use
+- 审计刷新路径中涉及的辅助方法
+- 明确标记哪些方法可以安全运行在后台线程
 
-## Testing Strategy
+## 测试策略
 
-### Manual verification
+### 手工验证
 
-- open the plugin on a class with cached data and verify faster initial responsiveness
-- switch rapidly across Java files/classes and confirm the list updates without obvious UI stalls
-- use search with a larger cache set and verify typing remains smooth
-- save, update, and delete cached parameter entries and confirm UI state eventually reflects the latest data
-- reopen dialogs and verify no visible regression in selected-item synchronization
+- 在存在缓存数据的类上打开插件，确认初次响应更快
+- 在多个 Java 文件或类之间快速切换，确认列表更新时没有明显 UI 卡顿
+- 在缓存数据较多时使用搜索，确认输入过程保持顺滑
+- 保存、更新、删除缓存参数后，确认 UI 最终能反映最新数据
+- 反复打开弹窗，确认选中项同步行为没有明显回归
 
-### Regression focus
+### 回归关注点
 
-- no incorrect table contents after rapid file switching
-- no duplicate or missing search results caused by debounce or stale request suppression
-- no outdated data overriding newer state after save/delete/update
+- 快速切换文件后，表格内容不能错误
+- 防抖和过期结果抑制不能导致搜索结果重复或丢失
+- save/delete/update 后，旧数据不能覆盖新状态
 
-## Rollout Sequence
+## 实施顺序
 
-1. Introduce background refresh primitives and stale-result suppression.
-2. Convert file-switch driven list refresh to async/coalesced flow.
-3. Convert search to debounced filtering with normalized text.
-4. Move event-triggered heavy follow-up work off the immediate dispatch path.
-5. Verify EDT boundaries and clean up remaining synchronous hotspots discovered during testing.
+1. 引入后台刷新基础能力和过期结果抑制机制。
+2. 把文件切换驱动的列表刷新改成异步且可合并的流程。
+3. 把搜索改成带防抖的过滤，并加入标准化文本缓存。
+4. 把事件触发后的重刷新工作移出即时分发路径。
+5. 复查 EDT 边界，并清理测试中发现的剩余同步热点。
 
-## Recommendation
+## 结论
 
-Proceed with the moderate refactor above. This gives the best expected reduction in general stutter while preserving plugin behavior and avoiding a high-risk rewrite.
+建议按上述中等重构方案推进。这个方案最有可能在不改变插件行为的前提下，明显降低整体卡顿，同时避免高风险重写。
