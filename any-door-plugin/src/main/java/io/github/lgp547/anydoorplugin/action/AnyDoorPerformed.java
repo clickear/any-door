@@ -86,7 +86,16 @@ public class AnyDoorPerformed {
     public void doUseNewUI(AnyDoorSettingsState service, Project project, PsiClass psiClass, PsiMethod psiMethod, String cacheKey, Runnable okAction, @Nullable Long selectedId) {
         ParamCacheDto cache = service.getCache(cacheKey);
         DataContext instance = DataContext.instance(project);
-        MainUI mainUI = new MainUI(psiMethod.getName(), project, instance.getExecuteDataContext(psiClass.getQualifiedName(), IdeClassUtil.getMethodQualifiedName(psiMethod), selectedId, cache.content()));
+        MainUI mainUI = new MainUI(psiMethod.getName(), project);
+
+        instance.getExecuteDataContextAsync(
+                psiClass.getQualifiedName(),
+                IdeClassUtil.getMethodQualifiedName(psiMethod),
+                selectedId,
+                cache.content(),
+                mainUI::bindContext
+        );
+
         mainUI.setOkAction((text) -> {
             okAction.run();
             if (mainUI.isChangePid()) {

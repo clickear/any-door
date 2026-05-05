@@ -56,6 +56,8 @@ public class ParamDataItem extends DataItem {
     public ParamIndexData toIndexData() {
         ParamIndexData indexData = new ParamIndexData();
         indexData.setId(this.id);
+        indexData.setUpdateTime(this.updateTime);
+        indexData.setDeleted(this.deleted);
         indexData.setName(this.name);
         indexData.setQualifiedMethodName(this.qualifiedName);
         return indexData;

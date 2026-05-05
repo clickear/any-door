@@ -34,6 +34,7 @@ import com.intellij.ui.DocumentAdapter;
 import com.intellij.ui.SearchTextField;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.table.TableView;
+import com.intellij.util.Alarm;
 import com.intellij.util.PsiNavigateUtil;
 import com.intellij.util.messages.MessageBusConnection;
 import com.intellij.util.ui.ColumnInfo;
@@ -48,6 +49,9 @@ import io.github.lgp547.anydoorplugin.dialog.event.Event;
 import io.github.lgp547.anydoorplugin.dialog.event.EventType;
 import io.github.lgp547.anydoorplugin.dialog.event.DefaultMulticaster;
 import io.github.lgp547.anydoorplugin.dialog.event.Listener;
+import io.github.lgp547.anydoorplugin.dialog.event.impl.DataSyncEvent;
+import io.github.lgp547.anydoorplugin.dialog.perf.LatestRequestToken;
+import io.github.lgp547.anydoorplugin.dialog.perf.RefreshRequestState;
 import io.github.lgp547.anydoorplugin.dialog.utils.EventHelper;
 import io.github.lgp547.anydoorplugin.dialog.utils.IdeClassUtil;
 import io.github.lgp547.anydoorplugin.settings.AnyDoorSettingsState;
@@ -64,6 +68,9 @@ import org.jetbrains.annotations.Nullable;
  **/
 public class ParamListUI extends JPanel implements Listener {
 
+    private static final int REFRESH_DEBOUNCE_MS = 120;
+    private static final int SEARCH_DEBOUNCE_MS = 180;
+
     private final JBScrollPane contentPanel;
     private final JToolBar toolBar;
 
@@ -71,6 +78,9 @@ public class ParamListUI extends JPanel implements Listener {
     private final TableView<ViewData> table;
 
     private final Project project;
+
+    private final RefreshRequestState refreshRequestState = new RefreshRequestState();
+    private final Alarm refreshAlarm = new Alarm();
 
     private JBPopup myPopup;
     @Nullable
@@ -100,12 +110,10 @@ public class ParamListUI extends JPanel implements Listener {
         toolBar.addToolButton("Delete", AnyDoorIcons.delete_icon, AnyDoorIcons.delete_hover_icon, e -> deleteAction());
 
         toolBar.addToolButton("Refresh", AnyDoorIcons.refresh_icon, AnyDoorIcons.refresh_hover_icon, e -> {
-            if (null == context) {
+            if (context == null || context.clazz == null) {
                 return;
             }
-            context = DataContext.instance(project).getClassDataContextNoCache(context.clazz.getQualifiedName());
-
-            tableModel.refreshAll(ViewData.toViewData(context.data));
+            scheduleRefresh(context.clazz.getQualifiedName(), true);
         });
 
         toolBar.addToolButton("Find", AnyDoorIcons.search_icon, AnyDoorIcons.search_icon, e -> findAction());
@@ -134,14 +142,23 @@ public class ParamListUI extends JPanel implements Listener {
             }
         });
 
+        Alarm searchAlarm = new Alarm();
+        LatestRequestToken latestSearchToken = new LatestRequestToken();
+
         searchTextField.addDocumentListener(new DocumentAdapter() {
             @Override
             protected void textChanged(@NotNull DocumentEvent e) {
                 String text = searchTextField.getText();
-
-                List<ParamIndexData> searchResults = DataContext.instance(project).search(text);
-
-                model.setItems(ViewData.toViewData(searchResults));
+                searchAlarm.cancelAllRequests();
+                searchAlarm.addRequest(() -> {
+                    long token = latestSearchToken.nextToken();
+                    DataContext.instance(project).searchAsync(text, result -> {
+                        if (!latestSearchToken.isCurrent(token)) {
+                            return;
+                        }
+                        model.setItems(ViewData.toViewData(result));
+                    });
+                }, SEARCH_DEBOUNCE_MS);
             }
         });
 
@@ -203,8 +220,8 @@ public class ParamListUI extends JPanel implements Listener {
     private void initLoadData() {
         VirtualFile[] files = FileEditorManager.getInstance(project).getSelectedFiles();
         if (files.length > 0) {
-            VirtualFile file = files[0];
-            readAndRefreshTable(file);
+            String qualifiedName = getQualifiedName(files[0]);
+            scheduleRefresh(qualifiedName, false);
         }
     }
 
@@ -256,16 +273,41 @@ public class ParamListUI extends JPanel implements Listener {
         if (Objects.nonNull(file)) {
             String qualifiedName = getQualifiedName(file);
             if (qualifiedName != null) {
-                doReadAndRefresh(qualifiedName);
+                scheduleRefresh(qualifiedName, false);
             }
         }
     }
 
-    private void doReadAndRefresh(String qualifiedName) {
-//        data = dataService.find(qualifiedName);
-        context = DataContext.instance(project).getClassDataContext(qualifiedName);
+    private void scheduleRefresh(String qualifiedName, boolean forceNoCache) {
+        if (qualifiedName == null) {
+            return;
+        }
+        if (!forceNoCache && Objects.equals(refreshRequestState.getCurrentKey(), qualifiedName)) {
+            return;
+        }
 
-        tableModel.refreshAll(ViewData.toViewData(context.data));
+        refreshAlarm.cancelAllRequests();
+        refreshAlarm.addRequest(() -> {
+            RefreshRequestState.ScheduleResult result = refreshRequestState.schedule(qualifiedName);
+            if (!result.shouldSchedule()) {
+                return;
+            }
+            long token = result.token();
+            DataContext dataContext = DataContext.instance(project);
+            if (forceNoCache) {
+                dataContext.getClassDataContextNoCacheAsync(qualifiedName, loaded -> applyLoadedContext(qualifiedName, token, loaded));
+            } else {
+                dataContext.getClassDataContextAsync(qualifiedName, loaded -> applyLoadedContext(qualifiedName, token, loaded));
+            }
+        }, REFRESH_DEBOUNCE_MS);
+    }
+
+    private void applyLoadedContext(String qualifiedName, long token, ClassDataContext loaded) {
+        if (!refreshRequestState.isLatest(qualifiedName, token)) {
+            return;
+        }
+        context = loaded;
+        tableModel.refreshAll(ViewData.toViewData(loaded.data));
     }
 
     private String getQualifiedName(VirtualFile file) {
@@ -310,10 +352,9 @@ public class ParamListUI extends JPanel implements Listener {
     @Override
     public void onEvent(Event event) {
         if (Objects.equals(event.getType(), EventType.DATA_SYNC)) {
-            if (null == context) {
-                return;
+            if (context != null && context.clazz != null) {
+                scheduleRefresh(context.clazz.getQualifiedName(), true);
             }
-            doReadAndRefresh(context.clazz.getQualifiedName());
         }
     }
 

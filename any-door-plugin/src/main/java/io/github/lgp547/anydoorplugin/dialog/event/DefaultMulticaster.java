@@ -53,10 +53,12 @@ public final class DefaultMulticaster implements Multicaster {
             if (dataChangeListener != null) {
                 dataChangeListener.onEvent(event);
             }
-        } else {
-            for (Listener listener : listeners) {
-                listener.onEvent(event);
-            }
+            return;
+        }
+
+        List<Listener> listenerSnapshot = List.copyOf(listeners);
+        for (Listener listener : listenerSnapshot) {
+            listener.onEvent(event);
         }
     }
 }

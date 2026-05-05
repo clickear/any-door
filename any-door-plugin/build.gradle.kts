@@ -18,6 +18,8 @@ dependencies {
     implementation("io.github.lgp547:any-door-core:$anyDoorVersion")
     implementation("io.github.lgp547:any-door-attach:$anyDoorVersion")
 
+    testImplementation(platform("org.junit:junit-bom:5.10.2"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
 }
 
 // Configure Gradle IntelliJ Plugin - read more: https://github.com/JetBrains/gradle-intellij-plugin
@@ -31,6 +33,10 @@ intellij {
 }
 
 tasks {
+    withType<Test> {
+        useJUnitPlatform()
+    }
+
     // Set the JVM compatibility versions
     withType<JavaCompile> {
         sourceCompatibility = "17"

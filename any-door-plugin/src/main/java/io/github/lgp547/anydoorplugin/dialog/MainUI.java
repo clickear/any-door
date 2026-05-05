@@ -1,5 +1,6 @@
 package io.github.lgp547.anydoorplugin.dialog;
 
+import java.awt.*;
 import java.util.Objects;
 import java.util.function.Consumer;
 
@@ -31,22 +32,34 @@ public class MainUI extends DialogWrapper implements Listener {
 
     private final Project project;
 
-    private final MethodDataContext context;
+    private final JPanel rootPanel;
+
+    private MethodDataContext context;
 
     private MainPanel panel;
 
     private Consumer<String> okAction;
 
-    public MainUI(String title, Project project, MethodDataContext context) {
+    public MainUI(String title, Project project) {
         super(project, true, IdeModalityType.MODELESS);
         setTitle(title);
         this.project = project;
-        this.context = context;
+        this.rootPanel = new JPanel(new BorderLayout());
 
         buttonSettings();
-
         DefaultMulticaster.getInstance(project).addListener(this);
+
+        rootPanel.add(new JLabel("Loading..."), BorderLayout.CENTER);
         init();
+    }
+
+    public void bindContext(MethodDataContext context) {
+        this.context = context;
+        this.panel = new MainPanel(project, context);
+        rootPanel.removeAll();
+        rootPanel.add(panel, BorderLayout.CENTER);
+        rootPanel.revalidate();
+        rootPanel.repaint();
     }
 
     private void buttonSettings() {
@@ -63,7 +76,7 @@ public class MainUI extends DialogWrapper implements Listener {
         if (doValidate() != null) {
             return;
         }
-        if (Objects.nonNull(okAction)) {
+        if (Objects.nonNull(okAction) && panel != null) {
             JSONEditor editor = panel.getEditor();
             String text = JsonUtil.compressJson(editor.getText());
             okAction.accept(text);
@@ -73,8 +86,8 @@ public class MainUI extends DialogWrapper implements Listener {
 
     @Override
     protected @Nullable ValidationInfo doValidate() {
-        if (panel == null) {
-            return super.doValidate();
+        if (panel == null || context == null) {
+            return null;
         }
         AnyDoorSettingsState settings = project.getService(AnyDoorSettingsState.class);
         ValidationInfo validationInfo = ParamValidationUtil.validate(panel.getEditor().getText(), context.getParamList(),
@@ -92,17 +105,24 @@ public class MainUI extends DialogWrapper implements Listener {
 
     @Override
     protected @Nullable JComponent createCenterPanel() {
-        panel = new MainPanel(project, context);
-        return panel;
+        return rootPanel;
     }
 
     @Override
     public void onEvent(Event event) {
-        if (Objects.equals(EventType.DATA_SYNC, event.getType())) {
+        if (Objects.equals(EventType.DATA_SYNC, event.getType()) && context != null) {
             DataSyncEvent syncEvent = (DataSyncEvent) event;
             if (Objects.equals(syncEvent.getQualifiedMethodName(), context.getQualifiedMethodName())) {
-                context.sync();
-                context.fireEvent(EventHelper.createDisplayDataChangeEvent(context.listDisplayData(), context.getSelectedItem()));
+                DataContext.instance(project).getExecuteDataContextAsync(
+                        context.getClazz().getQualifiedName(),
+                        context.getQualifiedMethodName(),
+                        context.getSelectedItem() == null ? null : context.getSelectedItem().getId(),
+                        context.cacheContent,
+                        latest -> {
+                            bindContext(latest);
+                            latest.fireEvent(EventHelper.createDisplayDataChangeEvent(latest.listDisplayData(), latest.getSelectedItem()));
+                        }
+                );
             }
         }
     }
@@ -114,18 +134,18 @@ public class MainUI extends DialogWrapper implements Listener {
     }
 
     public Integer getRunNum() {
-        return panel.getRunNum();
+        return panel != null ? panel.getRunNum() : 1;
     }
 
     public Boolean getIsConcurrent() {
-        return panel.getIsConcurrent();
+        return panel != null ? panel.getIsConcurrent() : false;
     }
 
     public boolean isChangePid() {
-        return panel.isChangePid();
+        return panel != null && panel.isChangePid();
     }
 
     public Integer getPid() {
-        return panel.getPid();
+        return panel != null ? panel.getPid() : null;
     }
 }
