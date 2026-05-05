@@ -3,8 +3,8 @@ package io.github.lgp547.anydoorplugin.dialog.event;
 import com.intellij.openapi.components.Service;
 import com.intellij.openapi.project.Project;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * @description:
@@ -18,7 +18,7 @@ public final class DefaultMulticaster implements Multicaster {
 
     private final Project project;
     private Listener dataChangeListener;
-    private final List<Listener> listeners = new ArrayList<>();
+    private final List<Listener> listeners = new CopyOnWriteArrayList<>();
 
     public static DefaultMulticaster getInstance(Project project) {
         return project.getService(DefaultMulticaster.class);
@@ -56,8 +56,7 @@ public final class DefaultMulticaster implements Multicaster {
             return;
         }
 
-        List<Listener> listenerSnapshot = List.copyOf(listeners);
-        for (Listener listener : listenerSnapshot) {
+        for (Listener listener : listeners) {
             listener.onEvent(event);
         }
     }

@@ -118,8 +118,7 @@ public final class DataContext implements Listener {
                                            Consumer<MethodDataContext> consumer) {
         Objects.requireNonNull(consumer);
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            MethodDataContext context = ReadAction.compute(() ->
-                    getExecuteDataContext(qualifiedClassName, qualifiedMethodName, selectedId, cacheContent));
+            MethodDataContext context = getExecuteDataContext(qualifiedClassName, qualifiedMethodName, selectedId, cacheContent);
             ApplicationManager.getApplication().invokeLater(() -> consumer.accept(context));
         });
     }

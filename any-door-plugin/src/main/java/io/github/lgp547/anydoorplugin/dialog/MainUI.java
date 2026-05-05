@@ -112,7 +112,7 @@ public class MainUI extends DialogWrapper implements Listener {
     public void onEvent(Event event) {
         if (Objects.equals(EventType.DATA_SYNC, event.getType()) && context != null) {
             DataSyncEvent syncEvent = (DataSyncEvent) event;
-            if (Objects.equals(syncEvent.getQualifiedMethodName(), context.getQualifiedMethodName())) {
+            if (Objects.equals(syncEvent.getQualifiedMethodName(), context.getQualifiedMethodName()) && context.getClazz() != null) {
                 DataContext.instance(project).getExecuteDataContextAsync(
                         context.getClazz().getQualifiedName(),
                         context.getQualifiedMethodName(),
