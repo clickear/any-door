@@ -25,6 +25,11 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <strong>2.2.8 修复版本</strong>
+        <ul>
+            <li>[fix]首次打开新参数面板时输入区域过小</li>
+            <li>[fix]加载中禁用 RUN，避免内容未完成绑定时误提交</li>
+        </ul>
         <strong>2.2.0 功能扩展版本</strong>
         <ul>
             <li>支持提前执行任意代码（方便设置上下文）</li>

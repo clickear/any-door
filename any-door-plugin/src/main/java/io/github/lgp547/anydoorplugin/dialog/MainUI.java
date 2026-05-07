@@ -20,6 +20,7 @@ import io.github.lgp547.anydoorplugin.dialog.utils.EventHelper;
 import io.github.lgp547.anydoorplugin.settings.AnyDoorSettingsState;
 import io.github.lgp547.anydoorplugin.util.JsonUtil;
 import io.github.lgp547.anydoorplugin.util.ParamValidationUtil;
+import com.intellij.util.ui.JBDimension;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -29,6 +30,7 @@ import org.jetbrains.annotations.Nullable;
  * @date: 2023-07-07 11:35
  **/
 public class MainUI extends DialogWrapper implements Listener {
+    static final Dimension DEFAULT_DIALOG_SIZE = new JBDimension(670, 500);
 
     private final Project project;
 
@@ -45,12 +47,14 @@ public class MainUI extends DialogWrapper implements Listener {
         setTitle(title);
         this.project = project;
         this.rootPanel = new JPanel(new BorderLayout());
+        this.rootPanel.setPreferredSize(DEFAULT_DIALOG_SIZE);
 
         buttonSettings();
         DefaultMulticaster.getInstance(project).addListener(this);
 
         rootPanel.add(new JLabel("Loading..."), BorderLayout.CENTER);
         init();
+        setRunActionEnabled(false);
     }
 
     public void bindContext(MethodDataContext context) {
@@ -60,6 +64,8 @@ public class MainUI extends DialogWrapper implements Listener {
         rootPanel.add(panel, BorderLayout.CENTER);
         rootPanel.revalidate();
         rootPanel.repaint();
+        setRunActionEnabled(true);
+        updateWindowSize();
     }
 
     private void buttonSettings() {
@@ -147,5 +153,27 @@ public class MainUI extends DialogWrapper implements Listener {
 
     public Integer getPid() {
         return panel != null ? panel.getPid() : null;
+    }
+
+    static Dimension expandToFit(Dimension currentSize, Dimension preferredSize) {
+        return new Dimension(
+                Math.max(currentSize.width, preferredSize.width),
+                Math.max(currentSize.height, preferredSize.height)
+        );
+    }
+
+    private void updateWindowSize() {
+        Window window = SwingUtilities.getWindowAncestor(rootPanel);
+        if (window == null) {
+            return;
+        }
+        Dimension resized = expandToFit(window.getSize(), rootPanel.getPreferredSize());
+        if (!resized.equals(window.getSize())) {
+            window.setSize(resized);
+        }
+    }
+
+    private void setRunActionEnabled(boolean enabled) {
+        getOKAction().setEnabled(enabled);
     }
 }
