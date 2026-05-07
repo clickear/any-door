@@ -27,6 +27,7 @@ import io.github.lgp547.anydoorplugin.dialog.event.impl.SelectItemChangedEvent;
 import io.github.lgp547.anydoorplugin.dialog.event.impl.UpdateDataItemEvent;
 import io.github.lgp547.anydoorplugin.dialog.utils.EventHelper;
 import io.github.lgp547.anydoorplugin.dialog.utils.IdeClassUtil;
+import io.github.lgp547.anydoorplugin.util.AnyDoorActionUtil;
 import io.github.lgp547.anydoorplugin.util.JsonElementUtil;
 import org.jetbrains.annotations.Nullable;
 
@@ -147,6 +148,18 @@ public class MethodDataContext implements Multicaster, Listener {
             return new PsiParameterListImpl(new PsiParameterListStubImpl(null));
         }
         return method.getParameterList();
+    }
+
+    public String getMethodKey() {
+        PsiMethod method = getMethod();
+        if (method == null || getClazz() == null || getClazz().getQualifiedName() == null) {
+            return qualifiedMethodName;
+        }
+        return AnyDoorActionUtil.genCacheKey(
+                getClazz().getQualifiedName(),
+                method.getName(),
+                AnyDoorActionUtil.toParamTypeNameList(method.getParameterList())
+        );
     }
 
     @Override

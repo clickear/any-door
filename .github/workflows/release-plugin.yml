@@ -2,6 +2,8 @@ name: Release Plugin
 
 on:
   push:
+    branches:
+      - "feature/java-expression-mode"
     tags:
       - "v*"
   workflow_dispatch:
@@ -25,13 +27,13 @@ jobs:
           cache: maven
 
       - name: Build and install Any Door jars to local Maven repo
-        run: mvn -B -ntp -P '!ossrh,!release' -DskipTests install
+        run: mvn -B -ntp -P '!ossrh,!release' -Dmaven.test.skip=true install
 
       - name: Build IDEA plugin package
         working-directory: any-door-plugin
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon buildPlugin
+          ./gradlew --no-daemon --refresh-dependencies buildPlugin
 
       - name: Upload plugin artifact
         uses: actions/upload-artifact@v4

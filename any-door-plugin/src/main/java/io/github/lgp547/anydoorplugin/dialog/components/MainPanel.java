@@ -35,6 +35,7 @@ public class MainPanel extends JBPanel<MainPanel> implements Listener {
     private Project project;
     private final MyToolBar toolBar;
     private final MyEditor editor;
+    private final ExpressionEditorPanel expressionPanel;
 //    private final MyComboBox comboBox;
     private final MethodDataContext context;
 //    private final JButton saveParamButton;
@@ -50,6 +51,7 @@ public class MainPanel extends JBPanel<MainPanel> implements Listener {
 
         toolBar = new MyToolBar(project, context);
         editor = new MyEditor(context, context.cacheContent, context.getParamList(), project);
+        expressionPanel = new ExpressionEditorPanel(project, context, editor);
 //        comboBox = new MyComboBox(project, context);
 //        saveParamButton = new JButton("Save");
         runNum = new JBIntSpinner(1, 1, Integer.MAX_VALUE);
@@ -58,6 +60,7 @@ public class MainPanel extends JBPanel<MainPanel> implements Listener {
         this.context.addListener(this);
 //        this.context.addListener(comboBox);
         this.context.addListener(editor);
+        this.context.addListener(expressionPanel);
 
         context.fireEvent(EventHelper.createDisplayDataChangeEvent(context.listDisplayData(), context.getSelectedItem()));
 
@@ -139,6 +142,13 @@ public class MainPanel extends JBPanel<MainPanel> implements Listener {
         gbc.gridwidth = 0;
         gbc.gridheight = -1;
         this.add(editor, gbc);
+
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 1;
+        gbc.weighty = 0;
+        gbc.gridx = 0;
+        gbc.gridy = 3;
+        this.add(expressionPanel, gbc);
     }
 
     public JSONEditor getEditor() {

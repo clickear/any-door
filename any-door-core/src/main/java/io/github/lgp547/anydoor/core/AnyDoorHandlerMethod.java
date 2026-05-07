@@ -31,6 +31,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -164,6 +165,9 @@ public class AnyDoorHandlerMethod extends HandlerMethod {
             } else {
                 // 对于是接口的话，通过顺序来填充参数，不再通过name来映射
                 value = Optional.ofNullable(contentMap.get("args" + i)).map(JsonUtil::toStrNotExc).orElse(null);
+                if (value == null && parameters.length == 1 && contentMap.size() == 1) {
+                    value = Optional.ofNullable(contentMap.values().iterator().next()).map(JsonUtil::toStrNotExc).orElse(null);
+                }
             }
             if (null == value) {
                 args[i] = null;
@@ -173,6 +177,24 @@ public class AnyDoorHandlerMethod extends HandlerMethod {
             args[i] = getArgs(parameter, value);
         }
         return args;
+    }
+
+    public Object[] resolveArgs(Map<String, Object> contentMap) {
+        return getArgs(contentMap);
+    }
+
+    public Map<String, Object> resolveArgsByName(Object[] args) {
+        MethodParameter[] parameters = getMethodParameters();
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (parameters == null) {
+            return result;
+        }
+        for (int i = 0; i < parameters.length; i++) {
+            MethodParameter parameter = parameters[i];
+            parameter.initParameterNameDiscovery(new DefaultParameterNameDiscoverer());
+            result.put(parameter.getParameterName(), args != null && args.length > i ? args[i] : null);
+        }
+        return result;
     }
     
     /**

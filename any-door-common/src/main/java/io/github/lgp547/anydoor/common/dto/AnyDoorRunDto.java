@@ -57,6 +57,16 @@ public class AnyDoorRunDto {
     private String jsonTimezone;
 
     private String jsonDateTimeFormat;
+
+    private Boolean expressionMode;
+
+    private String expression;
+
+    private String expressionResultPath;
+
+    private String expressionRootParamName;
+
+    private String expressionJsonPath;
     
     public String getClassName() {
         return className;
@@ -145,6 +155,46 @@ public class AnyDoorRunDto {
     public void setJsonDateTimeFormat(String jsonDateTimeFormat) {
         this.jsonDateTimeFormat = jsonDateTimeFormat;
     }
+
+    public Boolean getExpressionMode() {
+        return expressionMode;
+    }
+
+    public void setExpressionMode(Boolean expressionMode) {
+        this.expressionMode = expressionMode;
+    }
+
+    public String getExpression() {
+        return expression;
+    }
+
+    public void setExpression(String expression) {
+        this.expression = expression;
+    }
+
+    public String getExpressionResultPath() {
+        return expressionResultPath;
+    }
+
+    public void setExpressionResultPath(String expressionResultPath) {
+        this.expressionResultPath = expressionResultPath;
+    }
+
+    public String getExpressionRootParamName() {
+        return expressionRootParamName;
+    }
+
+    public void setExpressionRootParamName(String expressionRootParamName) {
+        this.expressionRootParamName = expressionRootParamName;
+    }
+
+    public String getExpressionJsonPath() {
+        return expressionJsonPath;
+    }
+
+    public void setExpressionJsonPath(String expressionJsonPath) {
+        this.expressionJsonPath = expressionJsonPath;
+    }
     
     public void verify() {
         Assert.notNull(className, "className is required");
@@ -169,6 +219,11 @@ public class AnyDoorRunDto {
                 ", projectBasePath='" + projectBasePath + '\'' +
                 ", jsonTimezone='" + jsonTimezone + '\'' +
                 ", jsonDateTimeFormat='" + jsonDateTimeFormat + '\'' +
+                ", expressionMode=" + expressionMode +
+                ", expression='" + expression + '\'' +
+                ", expressionResultPath='" + expressionResultPath + '\'' +
+                ", expressionRootParamName='" + expressionRootParamName + '\'' +
+                ", expressionJsonPath='" + expressionJsonPath + '\'' +
                 '}';
     }
     

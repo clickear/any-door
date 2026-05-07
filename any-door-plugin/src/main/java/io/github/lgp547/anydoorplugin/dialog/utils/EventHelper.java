@@ -10,8 +10,12 @@ import io.github.lgp547.anydoorplugin.dialog.event.impl.DataSyncEvent;
 import io.github.lgp547.anydoorplugin.dialog.event.impl.DisplayDataChangeEvent;
 import io.github.lgp547.anydoorplugin.dialog.event.impl.GlobalDataChangeEvent;
 import io.github.lgp547.anydoorplugin.dialog.event.impl.ImportExportEvent;
+import io.github.lgp547.anydoorplugin.dialog.event.impl.ApplyExpressionEvent;
+import io.github.lgp547.anydoorplugin.dialog.event.impl.FieldTargetChangedEvent;
 import io.github.lgp547.anydoorplugin.dialog.event.impl.SelectItemChangedEvent;
 import io.github.lgp547.anydoorplugin.dialog.event.impl.UpdateDataItemEvent;
+import io.github.lgp547.anydoorplugin.dialog.expression.ExpressionRequest;
+import io.github.lgp547.anydoorplugin.dialog.expression.FieldTarget;
 
 /**
  * @description:
@@ -70,5 +74,13 @@ public class EventHelper {
 
     public static Event createDataSyncEvent(String qualifiedMethodName) {
         return new DataSyncEvent(qualifiedMethodName);
+    }
+
+    public static Event createFieldTargetChangedEvent(FieldTarget target) {
+        return new FieldTargetChangedEvent(target);
+    }
+
+    public static Event createApplyExpressionEvent(ExpressionRequest request) {
+        return new ApplyExpressionEvent(request);
     }
 }

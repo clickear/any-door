@@ -100,7 +100,6 @@
                     </nonFilteredFileExtensions>
                 </configuration>
             </plugin>
-
         </plugins>
     </build>
 

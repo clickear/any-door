@@ -19,6 +19,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
@@ -38,6 +40,38 @@ public class ImportNewUtil {
 
     public static String getPluginLibPath(String libraryName) {
         return getPluginBasePath() + File.separator + libraryName;
+    }
+
+    public static List<String> getAnyDoorRuntimeJarPaths() {
+        File libDir = new File(getPluginBasePath());
+        File[] jarFiles = libDir.listFiles(file -> file.isFile()
+                && StringUtils.endsWith(file.getName(), ".jar")
+                && !StringUtils.startsWith(file.getName(), "any-door-plugin-")
+                && !StringUtils.startsWith(file.getName(), "any-door-attach-"));
+        if (jarFiles == null || jarFiles.length == 0) {
+            throw new IllegalStateException("AnyDoor runtime jars not found under " + libDir.getAbsolutePath());
+        }
+
+        List<File> orderedFiles = new ArrayList<>(List.of(jarFiles));
+        orderedFiles.sort(Comparator.comparingInt(ImportNewUtil::runtimeJarOrder)
+                .thenComparing(File::getName));
+
+        List<String> jarPaths = new ArrayList<>(orderedFiles.size());
+        for (File jarFile : orderedFiles) {
+            jarPaths.add(jarFile.getAbsolutePath());
+        }
+        return jarPaths;
+    }
+
+    private static int runtimeJarOrder(File jarFile) {
+        String name = jarFile.getName();
+        if (StringUtils.startsWith(name, "any-door-common-")) {
+            return 0;
+        }
+        if (StringUtils.startsWith(name, "any-door-core-")) {
+            return 1;
+        }
+        return 10;
     }
 
 //    public static void fillAnyDoorJar(Project project, String libName, String libVersion) {
