@@ -1,4 +1,16 @@
+import javax.xml.parsers.DocumentBuilderFactory
+
 fun properties(key: String) = providers.gradleProperty(key)
+
+fun readRevisionFromRootPom(): String {
+    val pomFile = file("../pom.xml")
+    val document = DocumentBuilderFactory.newInstance()
+        .newDocumentBuilder()
+        .parse(pomFile)
+    val revisionNodes = document.getElementsByTagName("revision")
+    require(revisionNodes.length > 0) { "Missing <revision> in ${pomFile.path}" }
+    return revisionNodes.item(0).textContent.trim()
+}
 
 plugins {
     id("java")
@@ -6,7 +18,7 @@ plugins {
 }
 
 group = "io.github.lgp547"
-val anyDoorVersion = "2.2.8"
+val anyDoorVersion = readRevisionFromRootPom()
 version = anyDoorVersion
 
 repositories {
@@ -33,6 +45,12 @@ intellij {
 }
 
 tasks {
+    processResources {
+        filesMatching("anydoor-plugin.properties") {
+            filter { line -> line.replace("@revision@", anyDoorVersion) }
+        }
+    }
+
     withType<Test> {
         useJUnitPlatform()
     }
