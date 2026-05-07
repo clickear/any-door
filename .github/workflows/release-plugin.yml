@@ -47,3 +47,13 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: any-door-plugin/build/distributions/*.zip
+
+      - name: Publish plugin prerelease for feature branch
+        if: github.ref == 'refs/heads/feature/java-expression-mode'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: prerelease-java-expression-mode-${{ github.run_number }}
+          name: prerelease-java-expression-mode-${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          prerelease: true
+          files: any-door-plugin/build/distributions/*.zip
