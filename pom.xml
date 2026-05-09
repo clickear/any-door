@@ -24,7 +24,7 @@
     </scm>
 
     <properties>
-        <revision>2.2.8</revision>
+        <revision>2.2.9</revision>
         <java.version>8</java.version>
         <spring.boot.version>2.7.4</spring.boot.version>
         <maven.compiler.source>${java.version}</maven.compiler.source>
