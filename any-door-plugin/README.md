@@ -1,5 +1,23 @@
 # AnyDoorPlugin 任意门插件
 
+## IntelliJ IDEA 兼容策略
+
+- 使用 IDEA 2024.1 Community SDK 编译，最低安装版本为 2024.1（build 241）。
+- Gradle 运行需要 JDK 21；插件通过 `--release 17` 编译，避免意外使用更高版本的 Java API。
+- 不设置 `until-build`，允许后续 IDEA 版本安装同一个 ZIP；这表示尽力向前兼容，不代表所有未来版本都经过验证。
+- Java / JSON 能力通过插件依赖显式声明；尽量使用 IntelliJ 公开接口，减少内部实现类变动造成的兼容问题。
+- CI 仅在编译基线上运行单元测试和打包，不下载多个 IDEA 版本，也不执行跨版本 Plugin Verifier。标签发布直接使用此次构建的 ZIP。
+
+本地构建（JDK 21）：
+
+```bash
+mvn -B -ntp -P '!ossrh,!release' -DskipTests install
+cd any-door-plugin
+bash ./gradlew --no-daemon test buildPlugin
+```
+
+安装包位于 `any-door-plugin/build/distributions/`。构建成功仅证明当前编译基线可用；新版 IDEA 的实际功能仍需使用反馈确认。
+
 ## 插件原理
 Java attach：通过jvm提供的功能，直接通过进程号进行跨进程调度
 

@@ -1,47 +1,73 @@
 name: Release Plugin
 
 on:
+  pull_request:
   push:
-    tags:
-      - "v*"
+    branches: [main]
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build-plugin:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 30
+    permissions:
+      contents: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21 for Gradle
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
           cache: maven
+
+      - uses: gradle/actions/setup-gradle@v4
 
       - name: Build and install Any Door jars to local Maven repo
         run: mvn -B -ntp -P '!ossrh,!release' -DskipTests install
 
-      - name: Build IDEA plugin package
+      - name: Test and build the plugin against IDEA 2024.1
         working-directory: any-door-plugin
-        run: |
-          chmod +x gradlew
-          ./gradlew --no-daemon buildPlugin
+        run: bash ./gradlew --no-daemon --max-workers=2 test buildPlugin
 
-      - name: Upload plugin artifact
+      - name: Record release artifact checksum
+        working-directory: any-door-plugin/build/distributions
+        shell: bash
+        run: |
+          archives=(*.zip)
+          test "${#archives[@]}" -eq 1
+          sha256sum "${archives[0]}" > SHA256SUMS
+
+      - name: Upload the single release artifact
         uses: actions/upload-artifact@v4
         with:
           name: any-door-plugin
-          path: any-door-plugin/build/distributions/*.zip
+          path: |
+            any-door-plugin/build/distributions/*.zip
+            any-door-plugin/build/distributions/SHA256SUMS
           if-no-files-found: error
 
-      - name: Publish plugin to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-test-reports
+          path: |
+            any-door-plugin/build/reports/tests/
+            any-door-plugin/build/test-results/
+          if-no-files-found: warn
+
+
+      - name: Publish the built ZIP to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: any-door-plugin/build/distributions/*.zip
+          files: |
+            any-door-plugin/build/distributions/*.zip
+            any-door-plugin/build/distributions/SHA256SUMS
+          fail_on_unmatched_files: true

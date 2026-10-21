@@ -1,4 +1,6 @@
 import javax.xml.parsers.DocumentBuilderFactory
+import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
+import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 
 fun properties(key: String) = providers.gradleProperty(key)
 
@@ -14,7 +16,7 @@ fun readRevisionFromRootPom(): String {
 
 plugins {
     id("java")
-    id("org.jetbrains.intellij") version "1.12.0" /*https://plugins.gradle.org/m2/org/jetbrains/intellij/plugins/gradle-intellij-plugin*/
+    id("org.jetbrains.intellij.platform") version "2.19.0"
 }
 
 group = "io.github.lgp547"
@@ -24,24 +26,29 @@ version = anyDoorVersion
 repositories {
     mavenCentral()
     mavenLocal()
+    intellijPlatform {
+        defaultRepositories()
+    }
 }
+
+val platformVersion = properties("platformVersion").get()
+val platformType = IntelliJPlatformType.valueOf(properties("platformType").get())
 
 dependencies {
     implementation("io.github.lgp547:any-door-core:$anyDoorVersion")
     implementation("io.github.lgp547:any-door-attach:$anyDoorVersion")
 
+    intellijPlatform {
+        create(platformType, platformVersion)
+        bundledPlugin("com.intellij.java")
+        bundledModule("com.intellij.modules.json")
+        testFramework(TestFrameworkType.Bundled)
+    }
+
     testImplementation(platform("org.junit:junit-bom:5.10.2"))
     testImplementation("org.junit.jupiter:junit-jupiter")
-}
-
-// Configure Gradle IntelliJ Plugin - read more: https://github.com/JetBrains/gradle-intellij-plugin
-intellij {
-    // todo：若没商业版授权，这里改成社区版进行调式
-    version.set("2024.3") // 沙盒 idea 的版本
-//    type.set("IU") // 商业版
-    type.set("IC") // 社区版
-
-    plugins.set(listOf("com.intellij.java", "com.intellij.modules.json"))
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testRuntimeOnly("org.junit.vintage:junit-vintage-engine")
 }
 
 tasks {
@@ -57,14 +64,13 @@ tasks {
 
     // Set the JVM compatibility versions
     withType<JavaCompile> {
-        sourceCompatibility = "17"
-        targetCompatibility = "17"
+        options.release.set(17)
         options.encoding = "UTF-8"
     }
 
     patchPluginXml {
         sinceBuild.set(properties("pluginSinceBuild"))
-        untilBuild.set(properties("pluginUntilBuild"))
+        untilBuild.set(properties("pluginUntilBuild").map { it.ifBlank { null } })
     }
 
 //    signPlugin {
