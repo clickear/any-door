@@ -19,7 +19,6 @@ import io.github.lgp547.anydoorplugin.dialog.event.impl.DataSyncEvent;
 import io.github.lgp547.anydoorplugin.dialog.utils.EventHelper;
 import io.github.lgp547.anydoorplugin.settings.AnyDoorSettingsState;
 import io.github.lgp547.anydoorplugin.util.JsonUtil;
-import io.github.lgp547.anydoorplugin.util.ParamValidationUtil;
 import com.intellij.util.ui.JBDimension;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -96,8 +95,11 @@ public class MainUI extends DialogWrapper implements Listener {
             return null;
         }
         AnyDoorSettingsState settings = project.getService(AnyDoorSettingsState.class);
-        ValidationInfo validationInfo = ParamValidationUtil.validate(panel.getEditor().getText(), context.getParamList(),
-                settings == null ? null : settings.jsonDateTimeFormat, panel.getEditor());
+        ValidationInfo validationInfo = context.validateParam(
+                panel.getEditor().getText(),
+                settings == null ? null : settings.jsonDateTimeFormat,
+                panel.getEditor()
+        );
         if (validationInfo != null) {
             return validationInfo;
         }

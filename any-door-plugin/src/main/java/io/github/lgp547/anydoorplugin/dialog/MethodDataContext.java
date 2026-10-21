@@ -6,14 +6,13 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Predicate;
 
+import com.intellij.openapi.application.ReadAction;
+import com.intellij.openapi.ui.ValidationInfo;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiMethod;
 import com.intellij.psi.PsiParameterList;
-import com.intellij.psi.impl.java.stubs.PsiParameterListStub;
-import com.intellij.psi.impl.java.stubs.impl.PsiParameterListStubImpl;
-import com.intellij.psi.impl.source.PsiParameterListImpl;
-import com.intellij.psi.util.PsiUtilCore;
+import com.intellij.ui.EditorTextField;
 import io.github.lgp547.anydoorplugin.data.domain.ParamDataItem;
 import io.github.lgp547.anydoorplugin.dialog.event.ComponentEvent;
 import io.github.lgp547.anydoorplugin.dialog.event.DataEvent;
@@ -28,6 +27,7 @@ import io.github.lgp547.anydoorplugin.dialog.event.impl.UpdateDataItemEvent;
 import io.github.lgp547.anydoorplugin.dialog.utils.EventHelper;
 import io.github.lgp547.anydoorplugin.dialog.utils.IdeClassUtil;
 import io.github.lgp547.anydoorplugin.util.JsonElementUtil;
+import io.github.lgp547.anydoorplugin.util.ParamValidationUtil;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -128,7 +128,7 @@ public class MethodDataContext implements Multicaster, Listener {
     }
 
     @Nullable
-    public PsiMethod getMethod() {
+    private PsiMethod getMethodInReadAction() {
         String simpleMethodName = IdeClassUtil.getSimpleMethodName(qualifiedMethodName);
         if (Objects.nonNull(classDataContext.clazz)) {
             PsiMethod[] methods = classDataContext.clazz.findMethodsByName(simpleMethodName, false);
@@ -141,12 +141,42 @@ public class MethodDataContext implements Multicaster, Listener {
         return null;
     }
 
-    public PsiParameterList getParamList() {
-        PsiMethod method = getMethod();
+    @Nullable
+    private PsiParameterList getParamListInReadAction() {
+        PsiMethod method = getMethodInReadAction();
         if (Objects.isNull(method)) {
-            return new PsiParameterListImpl(new PsiParameterListStubImpl(null));
+            return null;
         }
         return method.getParameterList();
+    }
+
+    @Nullable
+    public PsiParameterList getParamList() {
+        return ReadAction.compute(this::getParamListInReadAction);
+    }
+
+    public String createSimpleParamText() {
+        return ReadAction.compute(() -> {
+            PsiParameterList paramList = getParamListInReadAction();
+            return paramList == null ? "{}" : JsonElementUtil.getSimpleText(paramList);
+        });
+    }
+
+    public String createAllParamText() {
+        return ReadAction.compute(() -> {
+            PsiParameterList paramList = getParamListInReadAction();
+            return paramList == null ? "{}" : JsonElementUtil.getJsonText(paramList);
+        });
+    }
+
+    @Nullable
+    public ValidationInfo validateParam(String text, String dateTimeFormat, @Nullable EditorTextField editor) {
+        return ReadAction.compute(() -> ParamValidationUtil.validate(
+                text,
+                getParamListInReadAction(),
+                dateTimeFormat,
+                editor
+        ));
     }
 
     @Override
@@ -180,7 +210,7 @@ public class MethodDataContext implements Multicaster, Listener {
             findItem(null)
                     .ifPresentOrElse(
                             item -> {
-                                item.setParam(JsonElementUtil.getSimpleText(getParamList()));
+                                item.setParam(createSimpleParamText());
                                 selectItem(item);
                             },
                             this::resetEmptyItem);
@@ -188,7 +218,7 @@ public class MethodDataContext implements Multicaster, Listener {
             findItem(null)
                     .ifPresentOrElse(
                             item -> {
-                                item.setParam(JsonElementUtil.getJsonText(getParamList()));
+                                item.setParam(createAllParamText());
                                 selectItem(item);
                             },
                             this::resetEmptyItemFillParam);
@@ -205,11 +235,11 @@ public class MethodDataContext implements Multicaster, Listener {
 
     private void resetEmptyItemFillParam() {
         resetEmptyItem();
-        freeItem.setParam(JsonElementUtil.getJsonText(getParamList()));
+        freeItem.setParam(createAllParamText());
     }
 
     private void resetEmptyItem() {
-        freeItem = new ParamDataItem("", qualifiedMethodName, JsonElementUtil.getSimpleText(getParamList()));
+        freeItem = new ParamDataItem("", qualifiedMethodName, createSimpleParamText());
         selectItem(freeItem);
     }
 
