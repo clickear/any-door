@@ -15,6 +15,12 @@ public class ParamDataItem extends DataItem {
 
     protected String param;
 
+    /** User-owned metadata; kept with the preset so library views need no secondary index. */
+    protected Boolean favorite = false;
+
+    /** Epoch milliseconds of the last explicit apply/run action. */
+    protected Long lastUsedAt;
+
     public ParamDataItem() {
     }
 
@@ -48,6 +54,14 @@ public class ParamDataItem extends DataItem {
         this.param = param;
     }
 
+    public Boolean getFavorite() { return favorite; }
+
+    public void setFavorite(Boolean favorite) { this.favorite = favorite; }
+
+    public Long getLastUsedAt() { return lastUsedAt; }
+
+    public void setLastUsedAt(Long lastUsedAt) { this.lastUsedAt = lastUsedAt; }
+
 
     public String methodName() {
         return Objects.isNull(qualifiedName) ? null : qualifiedName.substring(qualifiedName.lastIndexOf("#") + 1);
@@ -60,6 +74,8 @@ public class ParamDataItem extends DataItem {
         indexData.setDeleted(this.deleted);
         indexData.setName(this.name);
         indexData.setQualifiedMethodName(this.qualifiedName);
+        indexData.setFavorite(this.favorite);
+        indexData.setLastUsedAt(this.lastUsedAt);
         return indexData;
     }
 }

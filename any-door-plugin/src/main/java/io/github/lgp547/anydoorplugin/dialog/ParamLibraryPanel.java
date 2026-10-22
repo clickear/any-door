@@ -1,523 +1,69 @@
 package io.github.lgp547.anydoorplugin.dialog;
 
 import com.intellij.openapi.Disposable;
-import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.application.WriteIntentReadAction;
-import com.intellij.openapi.fileEditor.FileEditorManager;
-import com.intellij.openapi.fileEditor.FileEditorManagerEvent;
-import com.intellij.openapi.fileEditor.FileEditorManagerListener;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
-import com.intellij.openapi.util.Disposer;
-import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.psi.PsiClass;
-import com.intellij.psi.PsiFile;
-import com.intellij.psi.PsiJavaFile;
-import com.intellij.psi.PsiManager;
-import com.intellij.psi.PsiMethod;
-import com.intellij.ui.DocumentAdapter;
 import com.intellij.ui.SearchTextField;
-import com.intellij.ui.components.JBLabel;
+import com.intellij.ui.components.JBList;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.components.JBTextArea;
 import com.intellij.ui.treeStructure.Tree;
-import com.intellij.util.Alarm;
-import com.intellij.util.messages.MessageBusConnection;
 import io.github.lgp547.anydoorplugin.action.AnyDoorAgainOpenAction;
 import io.github.lgp547.anydoorplugin.action.AnyDoorPerformed;
+import io.github.lgp547.anydoorplugin.data.domain.ParamCollection;
 import io.github.lgp547.anydoorplugin.data.domain.ParamIndexData;
-import io.github.lgp547.anydoorplugin.dialog.components.CustomToolbar;
-import io.github.lgp547.anydoorplugin.dialog.event.DefaultMulticaster;
-import io.github.lgp547.anydoorplugin.dialog.event.Event;
-import io.github.lgp547.anydoorplugin.dialog.event.EventType;
-import io.github.lgp547.anydoorplugin.dialog.event.Listener;
-import io.github.lgp547.anydoorplugin.dialog.library.ParamLibraryTreeModel;
-import io.github.lgp547.anydoorplugin.dialog.library.ParamMutationResult;
-import io.github.lgp547.anydoorplugin.dialog.perf.LatestRequestToken;
+import io.github.lgp547.anydoorplugin.dialog.library.ParamCollectionService;
 import io.github.lgp547.anydoorplugin.dialog.utils.IdeClassUtil;
 import io.github.lgp547.anydoorplugin.settings.AnyDoorSettingsState;
 import io.github.lgp547.anydoorplugin.util.AnyDoorActionUtil;
-import io.github.lgp547.anydoorplugin.util.AnyDoorIcons;
 import io.github.lgp547.anydoorplugin.util.JsonUtil;
-import io.github.lgp547.anydoorplugin.util.NotifierUtil;
 import org.jetbrains.annotations.NotNull;
-
-import javax.swing.JComponent;
-import javax.swing.JMenuItem;
-import javax.swing.JPanel;
-import javax.swing.JPopupMenu;
-import javax.swing.JSplitPane;
-import javax.swing.JTree;
-import javax.swing.ToolTipManager;
-import javax.swing.event.DocumentEvent;
-import javax.swing.event.TreeSelectionEvent;
-import javax.swing.tree.DefaultMutableTreeNode;
-import javax.swing.tree.DefaultTreeCellEditor;
-import javax.swing.tree.DefaultTreeCellRenderer;
-import javax.swing.tree.DefaultTreeModel;
-import javax.swing.tree.TreePath;
-import javax.swing.tree.TreeSelectionModel;
-import java.awt.BorderLayout;
-import java.awt.Component;
-import java.awt.Font;
-import java.awt.event.KeyAdapter;
-import java.awt.event.KeyEvent;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
-import java.util.ArrayList;
-import java.util.EventObject;
+import javax.swing.*;
+import javax.swing.tree.*;
+import java.awt.*;
+import java.awt.datatransfer.*;
+import java.util.*;
 import java.util.List;
-import java.util.Objects;
+import java.util.stream.Collectors;
 
-public class ParamLibraryPanel extends JPanel implements Listener, Disposable {
-
-    private static final int FILTER_DEBOUNCE_MS = 150;
-
-    private final Project project;
-    private final SearchTextField searchField;
-    private final Tree tree;
-    private final JBTextArea preview;
-    private final JBLabel statusLabel;
-    private final Alarm filterAlarm;
-    private final LatestRequestToken previewToken = new LatestRequestToken();
-
-    private List<ParamIndexData> indexItems = List.of();
-    private String activeClassName;
-    private boolean initialClassLocated;
-
-    public ParamLibraryPanel(Project project) {
-        super(new BorderLayout());
-        this.project = project;
-        this.filterAlarm = new Alarm(Alarm.ThreadToUse.SWING_THREAD, this);
-        this.searchField = new SearchTextField();
-        this.tree = new Tree();
-        this.preview = new JBTextArea();
-        this.statusLabel = new JBLabel("正在加载参数库...");
-
-        configureTree();
-        configurePreview();
-        buildLayout();
-        registerListeners();
-
-        DefaultMulticaster.getInstance(project).addListener(this);
-        activeClassName = selectedClassName();
-        reloadIndex();
-    }
-
-    private void configureTree() {
-        tree.setRootVisible(false);
-        tree.setShowsRootHandles(true);
-        tree.setEditable(true);
-        tree.getSelectionModel().setSelectionMode(TreeSelectionModel.DISCONTIGUOUS_TREE_SELECTION);
-        LibraryTreeRenderer renderer = new LibraryTreeRenderer();
-        tree.setCellRenderer(renderer);
-        tree.setCellEditor(new PresetTreeCellEditor(tree, renderer));
-        ToolTipManager.sharedInstance().registerComponent(tree);
-    }
-
-    private void configurePreview() {
-        preview.setEditable(false);
-        preview.setLineWrap(false);
-        preview.setText("选择一个参数方案以预览 JSON");
-        preview.setFont(new Font(Font.MONOSPACED, Font.PLAIN, preview.getFont().getSize()));
-    }
-
-    private void buildLayout() {
-        JPanel top = new JPanel(new BorderLayout());
-        top.add(createToolbar(), BorderLayout.NORTH);
-        top.add(searchField, BorderLayout.SOUTH);
-
-        JPanel treePanel = new JPanel(new BorderLayout());
-        treePanel.add(top, BorderLayout.NORTH);
-        treePanel.add(new JBScrollPane(tree), BorderLayout.CENTER);
-        treePanel.add(statusLabel, BorderLayout.SOUTH);
-
-        JPanel previewPanel = new JPanel(new BorderLayout());
-        previewPanel.add(new JBLabel("参数预览（只读）"), BorderLayout.NORTH);
-        previewPanel.add(new JBScrollPane(preview), BorderLayout.CENTER);
-
-        JSplitPane splitter = new JSplitPane(JSplitPane.VERTICAL_SPLIT, treePanel, previewPanel);
-        splitter.setResizeWeight(0.65);
-        splitter.setBorder(null);
-        add(splitter, BorderLayout.CENTER);
-    }
-
-    private JComponent createToolbar() {
-        CustomToolbar toolbar = new CustomToolbar();
-        toolbar.addToolButton("Refresh", AnyDoorIcons.refresh_icon, AnyDoorIcons.refresh_hover_icon, e -> reloadIndex());
-        toolbar.addToolButton("Open", AnyDoorIcons.edit_icon, AnyDoorIcons.edit_hover_icon, e -> openSelectedPreset());
-        toolbar.addToolButton("Rename", AnyDoorIcons.edit_icon, AnyDoorIcons.edit_hover_icon, e -> startRename());
-        toolbar.addToolButton("Delete", AnyDoorIcons.delete_icon, AnyDoorIcons.delete_hover_icon, e -> deleteSelectedPresets());
-        toolbar.addToolButton("Copy JSON", e -> copyPreview());
-        return toolbar;
-    }
-
-    private void registerListeners() {
-        searchField.addDocumentListener(new DocumentAdapter() {
-            @Override
-            protected void textChanged(@NotNull DocumentEvent event) {
-                filterAlarm.cancelAllRequests();
-                filterAlarm.addRequest(ParamLibraryPanel.this::rebuildTree, FILTER_DEBOUNCE_MS);
-            }
-        });
-        tree.addTreeSelectionListener(this::selectionChanged);
-        tree.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent event) {
-                if (event.getClickCount() == 2 && event.getButton() == MouseEvent.BUTTON1) {
-                    openSelectedPreset();
-                }
-            }
-
-            @Override
-            public void mousePressed(MouseEvent event) {
-                showPopupIfNecessary(event);
-            }
-
-            @Override
-            public void mouseReleased(MouseEvent event) {
-                showPopupIfNecessary(event);
-            }
-        });
-        tree.addKeyListener(new KeyAdapter() {
-            @Override
-            public void keyPressed(KeyEvent event) {
-                if (event.getKeyCode() == KeyEvent.VK_F2) {
-                    startRename();
-                } else if (event.getKeyCode() == KeyEvent.VK_DELETE || event.getKeyCode() == KeyEvent.VK_BACK_SPACE) {
-                    deleteSelectedPresets();
-                } else if (event.getKeyCode() == KeyEvent.VK_ENTER) {
-                    openSelectedPreset();
-                }
-            }
-        });
-
-        MessageBusConnection connection = project.getMessageBus().connect(this);
-        connection.subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, new FileEditorManagerListener() {
-            @Override
-            public void selectionChanged(@NotNull FileEditorManagerEvent event) {
-                activeClassName = classNameOf(event.getNewFile());
-                tree.repaint();
-            }
-        });
-    }
-
-    private void showPopupIfNecessary(MouseEvent event) {
-        if (!event.isPopupTrigger()) {
-            return;
-        }
-        TreePath path = tree.getPathForLocation(event.getX(), event.getY());
-        if (path != null && !tree.isPathSelected(path)) {
-            tree.setSelectionPath(path);
-        }
-        JPopupMenu menu = new JPopupMenu();
-        JMenuItem open = new JMenuItem("打开调用窗口");
-        open.addActionListener(e -> openSelectedPreset());
-        open.setEnabled(singleSelectedPreset() != null);
-        menu.add(open);
-
-        JMenuItem rename = new JMenuItem("重命名");
-        rename.addActionListener(e -> startRename());
-        rename.setEnabled(singleSelectedPreset() != null);
-        menu.add(rename);
-
-        JMenuItem copy = new JMenuItem("复制 JSON");
-        copy.addActionListener(e -> copyPreview());
-        copy.setEnabled(singleSelectedPreset() != null);
-        menu.add(copy);
-
-        JMenuItem delete = new JMenuItem("删除");
-        delete.addActionListener(e -> deleteSelectedPresets());
-        delete.setEnabled(!selectedPresetNodes().isEmpty());
-        menu.add(delete);
-        menu.show(tree, event.getX(), event.getY());
-    }
-
-    private void reloadIndex() {
-        statusLabel.setText("正在加载参数库...");
-        DataContext.instance(project).listParamIndexDataAsync(items -> {
-            if (Disposer.isDisposed(this)) {
-                return;
-            }
-            indexItems = items;
-            rebuildTree();
-        });
-    }
-
-    private void rebuildTree() {
-        ParamLibraryTreeModel.Node root = ParamLibraryTreeModel.build(indexItems, searchField.getText());
-        LibraryTreeModel model = new LibraryTreeModel(toSwingNode(root));
-        tree.setModel(model);
-        statusLabel.setText(root.getChildren().isEmpty()
-                ? (searchField.getText().isBlank() ? "暂无参数方案" : "没有匹配的参数方案")
-                : indexItems.size() + " 个参数方案");
-
-        if (!searchField.getText().isBlank()) {
-            expandAll();
-        } else if (!initialClassLocated && activeClassName != null) {
-            locateClass(activeClassName);
-            initialClassLocated = true;
-        }
-    }
-
-    private DefaultMutableTreeNode toSwingNode(ParamLibraryTreeModel.Node node) {
-        DefaultMutableTreeNode swingNode = new DefaultMutableTreeNode(node);
-        node.getChildren().forEach(child -> swingNode.add(toSwingNode(child)));
-        return swingNode;
-    }
-
-    private void expandAll() {
-        for (int row = 0; row < tree.getRowCount(); row++) {
-            tree.expandRow(row);
-        }
-    }
-
-    private void locateClass(String qualifiedClassName) {
-        DefaultMutableTreeNode root = (DefaultMutableTreeNode) tree.getModel().getRoot();
-        for (int i = 0; i < root.getChildCount(); i++) {
-            DefaultMutableTreeNode child = (DefaultMutableTreeNode) root.getChildAt(i);
-            ParamLibraryTreeModel.Node node = valueOf(child);
-            if (node != null && Objects.equals(node.getClassName(), qualifiedClassName)) {
-                TreePath path = new TreePath(child.getPath());
-                tree.expandPath(path);
-                tree.scrollPathToVisible(path);
-                return;
-            }
-        }
-    }
-
-    private void selectionChanged(TreeSelectionEvent event) {
-        ParamLibraryTreeModel.Node selected = singleSelectedPreset();
-        if (selected == null) {
-            previewToken.nextToken();
-            preview.setText("选择一个参数方案以预览 JSON");
-            return;
-        }
-        long token = previewToken.nextToken();
-        preview.setText("正在加载...");
-        DataContext.instance(project).findParamDataAsync(
-                selected.getClassName(),
-                selected.getPreset().getId(),
-                item -> {
-                    if (Disposer.isDisposed(this) || !previewToken.isCurrent(token)) {
-                        return;
-                    }
-                    if (item == null) {
-                        preview.setText("参数方案不存在或已被删除");
-                        return;
-                    }
-                    preview.setText(JsonUtil.formatterJson(item.getParam()));
-                    preview.setCaretPosition(0);
-                }
-        );
-    }
-
-    private void openSelectedPreset() {
-        ParamLibraryTreeModel.Node selected = singleSelectedPreset();
-        if (selected == null) {
-            return;
-        }
-        WriteIntentReadAction.run((Runnable) () -> {
-            PsiClass psiClass = IdeClassUtil.findClass(project, selected.getClassName());
-            PsiMethod psiMethod = IdeClassUtil.findMethod(project, selected.getQualifiedMethodName());
-            if (psiClass == null || psiMethod == null) {
-                NotifierUtil.notifyError(project, "class or method not found");
-                return;
-            }
-            AnyDoorSettingsState settings = project.getService(AnyDoorSettingsState.class);
-            new AnyDoorPerformed().doUseNewUI(
-                    settings,
-                    project,
-                    psiClass,
-                    psiMethod,
-                    AnyDoorActionUtil.genCacheKey(psiClass, psiMethod),
-                    () -> AnyDoorAgainOpenAction.PRE_METHOD_MAP.put(project.getName(), psiMethod),
-                    selected.getPreset().getId()
-            );
-        });
-    }
-
-    private void startRename() {
-        TreePath path = tree.getSelectionPath();
-        if (path != null && singleSelectedPreset() != null) {
-            tree.startEditingAtPath(path);
-        }
-    }
-
-    private void renamePreset(ParamLibraryTreeModel.Node node, String newName) {
-        DataContext.instance(project).renameParamDataAsync(
-                node.getClassName(),
-                node.getQualifiedMethodName(),
-                node.getPreset().getId(),
-                newName,
-                result -> handleMutationResult(result, "参数方案已重命名")
-        );
-    }
-
-    private void deleteSelectedPresets() {
-        List<ParamLibraryTreeModel.Node> nodes = selectedPresetNodes();
-        if (nodes.isEmpty()) {
-            return;
-        }
-        int answer = Messages.showYesNoDialog(
-                project,
-                "确定删除选中的 " + nodes.size() + " 个参数方案吗？",
-                "删除参数方案",
-                Messages.getQuestionIcon()
-        );
-        if (answer != Messages.YES) {
-            return;
-        }
-        List<ParamIndexData> items = nodes.stream().map(ParamLibraryTreeModel.Node::getPreset).toList();
-        DataContext.instance(project).deleteParamDataAsync(items, result -> handleMutationResult(result, "参数方案已删除"));
-    }
-
-    private void handleMutationResult(ParamMutationResult result, String successMessage) {
-        if (!result.success()) {
-            NotifierUtil.notifyError(project, result.message());
-            return;
-        }
-        NotifierUtil.notifyInfo(project, successMessage);
-        preview.setText("选择一个参数方案以预览 JSON");
-        reloadIndex();
-    }
-
-    private void copyPreview() {
-        if (singleSelectedPreset() != null && !preview.getText().isBlank()) {
-            preview.selectAll();
-            preview.copy();
-            preview.select(0, 0);
-            NotifierUtil.notifyInfo(project, "参数 JSON 已复制");
-        }
-    }
-
-    private ParamLibraryTreeModel.Node singleSelectedPreset() {
-        List<ParamLibraryTreeModel.Node> nodes = selectedPresetNodes();
-        return nodes.size() == 1 ? nodes.get(0) : null;
-    }
-
-    private List<ParamLibraryTreeModel.Node> selectedPresetNodes() {
-        TreePath[] paths = tree.getSelectionPaths();
-        if (paths == null) {
-            return List.of();
-        }
-        List<ParamLibraryTreeModel.Node> result = new ArrayList<>();
-        for (TreePath path : paths) {
-            Object component = path.getLastPathComponent();
-            if (component instanceof DefaultMutableTreeNode swingNode) {
-                ParamLibraryTreeModel.Node node = valueOf(swingNode);
-                if (node != null && node.getType() == ParamLibraryTreeModel.NodeType.PRESET) {
-                    result.add(node);
-                }
-            }
-        }
-        return result;
-    }
-
-    private String selectedClassName() {
-        VirtualFile[] files = FileEditorManager.getInstance(project).getSelectedFiles();
-        return files.length == 0 ? null : classNameOf(files[0]);
-    }
-
-    private String classNameOf(VirtualFile file) {
-        if (file == null) {
-            return null;
-        }
-        return ReadAction.compute(() -> {
-            PsiFile psiFile = PsiManager.getInstance(project).findFile(file);
-            if (!(psiFile instanceof PsiJavaFile javaFile)) {
-                return null;
-            }
-            String packageName = javaFile.getPackageName();
-            String simpleName = javaFile.getName().replaceFirst("\\.java$", "");
-            return packageName.isEmpty() ? simpleName : packageName + "." + simpleName;
-        });
-    }
-
-    @Override
-    public void onEvent(Event event) {
-        if (event.getType() == EventType.DATA_SYNC) {
-            reloadIndex();
-        }
-    }
-
-    @Override
-    public void dispose() {
-        DefaultMulticaster.getInstance(project).removeListener(this);
-        ToolTipManager.sharedInstance().unregisterComponent(tree);
-    }
-
-    private static ParamLibraryTreeModel.Node valueOf(DefaultMutableTreeNode node) {
-        Object value = node.getUserObject();
-        return value instanceof ParamLibraryTreeModel.Node libraryNode ? libraryNode : null;
-    }
-
-    private final class LibraryTreeModel extends DefaultTreeModel {
-        private LibraryTreeModel(DefaultMutableTreeNode root) {
-            super(root);
-        }
-
-        @Override
-        public void valueForPathChanged(TreePath path, Object newValue) {
-            Object component = path.getLastPathComponent();
-            if (!(component instanceof DefaultMutableTreeNode swingNode)) {
-                return;
-            }
-            ParamLibraryTreeModel.Node node = valueOf(swingNode);
-            if (node != null && node.getType() == ParamLibraryTreeModel.NodeType.PRESET) {
-                renamePreset(node, Objects.toString(newValue, ""));
-            }
-        }
-    }
-
-    private static final class PresetTreeCellEditor extends DefaultTreeCellEditor {
-        private PresetTreeCellEditor(JTree tree, DefaultTreeCellRenderer renderer) {
-            super(tree, renderer);
-        }
-
-        @Override
-        public boolean isCellEditable(EventObject event) {
-            TreePath path = tree.getSelectionPath();
-            if (path == null || !(path.getLastPathComponent() instanceof DefaultMutableTreeNode swingNode)) {
-                return false;
-            }
-            ParamLibraryTreeModel.Node node = valueOf(swingNode);
-            return node != null
-                    && node.getType() == ParamLibraryTreeModel.NodeType.PRESET
-                    && super.isCellEditable(event);
-        }
-    }
-
-    private final class LibraryTreeRenderer extends DefaultTreeCellRenderer {
-        @Override
-        public Component getTreeCellRendererComponent(JTree tree,
-                                                      Object value,
-                                                      boolean selected,
-                                                      boolean expanded,
-                                                      boolean leaf,
-                                                      int row,
-                                                      boolean hasFocus) {
-            super.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus);
-            if (!(value instanceof DefaultMutableTreeNode swingNode)) {
-                return this;
-            }
-            ParamLibraryTreeModel.Node node = valueOf(swingNode);
-            if (node == null) {
-                return this;
-            }
-            setFont(tree.getFont());
-            String text = node.getLabel();
-            if (node.getType() == ParamLibraryTreeModel.NodeType.CLASS && node.getSecondaryText() != null) {
-                text += "  —  " + node.getSecondaryText();
-                setToolTipText(node.getClassName());
-                if (Objects.equals(node.getClassName(), activeClassName)) {
-                    setFont(getFont().deriveFont(Font.BOLD));
-                }
-            } else {
-                setToolTipText(node.getQualifiedMethodName());
-            }
-            setText(text);
-            return this;
-        }
-    }
+/** Postman-light library: Collections navigate; list selects; details inspect. */
+public class ParamLibraryPanel extends JPanel implements Disposable {
+  private final Project project; private final ParamCollectionService collections;
+  private final Tree navTree = new Tree(); private final JBList<ParamIndexData> presetList = new JBList<>(new DefaultListModel<>());
+  private final JBTextArea detail = new JBTextArea("选择一个参数方案以预览 JSON"); private final SearchTextField search = new SearchTextField();
+  private List<ParamIndexData> all = List.of(); private Node selected = Node.all();
+  public ParamLibraryPanel(Project project) { super(new BorderLayout()); this.project=project; collections=ParamCollectionService.instance(project); configure(); buildLayout(); reload(); }
+  private void configure() {
+    navTree.setRootVisible(false); navTree.setDragEnabled(true); navTree.setDropMode(DropMode.ON); navTree.setTransferHandler(new CollectionTransfer());
+    navTree.addTreeSelectionListener(e -> { Node node=node(e.getPath()); if(node!=null){selected=node; refreshList();} });
+    presetList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION); presetList.setCellRenderer((list,value,index,isSelected,focus)->row(list,value,isSelected));
+    presetList.addListSelectionListener(e->{if(!e.getValueIsAdjusting()) preview(presetList.getSelectedValue());});
+    presetList.addMouseListener(new java.awt.event.MouseAdapter(){ public void mouseClicked(java.awt.event.MouseEvent e){if(e.getClickCount()==2)open();}});
+    detail.setEditable(false); detail.setFont(new Font(Font.MONOSPACED,Font.PLAIN,detail.getFont().getSize()));
+    search.addDocumentListener(new com.intellij.ui.DocumentAdapter(){protected void textChanged(@NotNull javax.swing.event.DocumentEvent e){refreshList();}});
+  }
+  private void buildLayout() {
+    JPanel left=new JPanel(new BorderLayout()); left.add(collectionActions(),BorderLayout.NORTH); left.add(new JBScrollPane(navTree),BorderLayout.CENTER);
+    JPanel middle=new JPanel(new BorderLayout()); middle.add(search,BorderLayout.NORTH); middle.add(new JBScrollPane(presetList),BorderLayout.CENTER); middle.add(presetActions(),BorderLayout.SOUTH);
+    JPanel right=new JPanel(new BorderLayout()); right.add(new JLabel("  方案详情"),BorderLayout.NORTH); right.add(new JBScrollPane(detail),BorderLayout.CENTER); right.add(detailActions(),BorderLayout.SOUTH);
+    JSplitPane first=new JSplitPane(JSplitPane.HORIZONTAL_SPLIT,left,middle); first.setDividerLocation(245); JSplitPane split=new JSplitPane(JSplitPane.HORIZONTAL_SPLIT,first,right); split.setDividerLocation(650); add(split);
+  }
+  private JComponent collectionActions(){ JPanel p=new JPanel(new FlowLayout(FlowLayout.LEFT,3,3)); JButton add=new JButton("+ Collection"), rename=new JButton("Rename"), del=new JButton("Delete"); add.addActionListener(e->create()); rename.addActionListener(e->rename()); del.addActionListener(e->delete()); p.add(add);p.add(rename);p.add(del);return p; }
+  private JComponent presetActions(){ JPanel p=new JPanel(new FlowLayout(FlowLayout.RIGHT,3,3)); JButton fav=new JButton("☆ 收藏"),open=new JButton("打开调用");fav.addActionListener(e->favorite());open.addActionListener(e->open());p.add(fav);p.add(open);return p; }
+  private JComponent detailActions(){ JPanel p=new JPanel(new FlowLayout(FlowLayout.RIGHT,3,3)); JButton copy=new JButton("复制 JSON");copy.addActionListener(e->{detail.selectAll();detail.copy();detail.select(0,0);});p.add(copy);return p; }
+  private Component row(JList<? extends ParamIndexData> list,ParamIndexData v,boolean selected){ JPanel p=new JPanel(new BorderLayout());p.setOpaque(true);p.setBorder(BorderFactory.createEmptyBorder(7,8,7,8));p.setBackground(selected?list.getSelectionBackground():list.getBackground()); JLabel title=new JLabel((Boolean.TRUE.equals(v.getFavorite())?"★ ":"")+safe(v.getName()));title.setFont(title.getFont().deriveFont(Font.BOLD));JLabel meta=new JLabel(shortName(v.getQualifiedMethodName())+" · "+(v.getLastUsedAt()==null?"从未使用":"最近使用"));meta.setForeground(selected?list.getSelectionForeground():com.intellij.ui.JBColor.GRAY);p.add(title,BorderLayout.NORTH);p.add(meta,BorderLayout.SOUTH);return p; }
+  private void reload(){DataContext.instance(project).listParamIndexDataAsync(items->{all=items; rebuildNav(); refreshList();});}
+  private void rebuildNav(){DefaultMutableTreeNode root=n(Node.root());root.add(n(Node.all()));root.add(n(Node.recent()));root.add(n(Node.favorites()));DefaultMutableTreeNode groups=n(Node.collections());root.add(groups);List<String> methods=all.stream().map(ParamIndexData::getQualifiedMethodName).filter(Objects::nonNull).distinct().toList();for(ParamCollection c:collections.list()){DefaultMutableTreeNode g=n(Node.collection(c));c.getMethodNames().stream().filter(methods::contains).forEach(m->g.add(n(Node.method(m))));groups.add(g);}DefaultMutableTreeNode un=n(Node.ungrouped());methods.stream().filter(m->ParamCollectionService.UNGROUPED.equals(collections.collectionOf(m))).forEach(m->un.add(n(Node.method(m))));groups.add(un);navTree.setModel(new DefaultTreeModel(root));for(int i=0;i<navTree.getRowCount();i++)navTree.expandRow(i);}
+  private void refreshList(){String q=search.getText().trim().toLowerCase();List<ParamIndexData> items=all.stream().filter(x->matches(x,selected)).filter(x->q.isEmpty()||(safe(x.getName())+" "+safe(x.getQualifiedMethodName())).toLowerCase().contains(q)).sorted(Comparator.comparing((ParamIndexData x)->!Boolean.TRUE.equals(x.getFavorite())).thenComparing(ParamIndexData::getLastUsedAt,Comparator.nullsLast(Comparator.reverseOrder()))).collect(Collectors.toList());DefaultListModel<ParamIndexData> model=(DefaultListModel<ParamIndexData>)presetList.getModel();model.clear();items.forEach(model::addElement);detail.setText("选择一个参数方案以预览 JSON");}
+  private boolean matches(ParamIndexData x,Node n){return switch(n.kind){case ALL,COLLECTIONS->true;case RECENT->x.getLastUsedAt()!=null;case FAVORITES->Boolean.TRUE.equals(x.getFavorite());case METHOD->Objects.equals(n.method,x.getQualifiedMethodName());case COLLECTION->n.collection.getMethodNames().contains(x.getQualifiedMethodName());case UNGROUPED->ParamCollectionService.UNGROUPED.equals(collections.collectionOf(x.getQualifiedMethodName()));default->false;};}
+  private void preview(ParamIndexData index){if(index==null)return;detail.setText("加载中…");DataContext.instance(project).findParamDataAsync(classOf(index.getQualifiedMethodName()),index.getId(),item->detail.setText(item==null?"参数方案不存在":JsonUtil.formatterJson(item.getParam())));}
+  private void favorite(){ParamIndexData x=presetList.getSelectedValue();if(x!=null)DataContext.instance(project).setFavoriteAsync(classOf(x.getQualifiedMethodName()),x.getQualifiedMethodName(),x.getId(),!Boolean.TRUE.equals(x.getFavorite()),r->reload());}
+  private void open(){ParamIndexData x=presetList.getSelectedValue();if(x==null)return;WriteIntentReadAction.run((Runnable)()->{var c=IdeClassUtil.findClass(project,classOf(x.getQualifiedMethodName()));var m=IdeClassUtil.findMethod(project,x.getQualifiedMethodName());if(c!=null&&m!=null)new AnyDoorPerformed().doUseNewUI(project.getService(AnyDoorSettingsState.class),project,c,m,AnyDoorActionUtil.genCacheKey(c,m),()->AnyDoorAgainOpenAction.PRE_METHOD_MAP.put(project.getName(),m),x.getId());});}
+  private void create(){String name=Messages.showInputDialog(project,"Collection 名称","新建 Collection",null);if(name!=null&&!name.isBlank()){collections.create(name);rebuildNav();}}
+  private void rename(){Node x=node(navTree.getSelectionPath());if(x!=null&&x.kind==Kind.COLLECTION){String name=Messages.showInputDialog(project,"Collection 名称","重命名",null,x.collection.getName(),null);if(name!=null&&!name.isBlank()){collections.rename(x.collection.getId(),name);rebuildNav();}}}
+  private void delete(){Node x=node(navTree.getSelectionPath());if(x!=null&&x.kind==Kind.COLLECTION&&Messages.showYesNoDialog(project,"删除 Collection，不会删除参数方案。","删除 Collection",null)==Messages.YES){collections.delete(x.collection.getId());selected=Node.all();rebuildNav();refreshList();}}
+  private Node node(TreePath p){if(p==null||!(p.getLastPathComponent() instanceof DefaultMutableTreeNode n)||!(n.getUserObject() instanceof Node x))return null;return x;}private DefaultMutableTreeNode n(Node n){return new DefaultMutableTreeNode(n);}private static String classOf(String m){int i=m==null?-1:m.lastIndexOf('#');return i<0?"":m.substring(0,i);}private static String shortName(String m){int i=m==null?-1:m.lastIndexOf('#');return i<0?safe(m):m.substring(i+1);}private static String safe(String s){return s==null||s.isBlank()?"未命名":s;}@Override public void dispose(){}
+  private enum Kind{ROOT,ALL,RECENT,FAVORITES,COLLECTIONS,COLLECTION,UNGROUPED,METHOD}private record Node(Kind kind,String method,ParamCollection collection){static Node root(){return new Node(Kind.ROOT,null,null);}static Node all(){return new Node(Kind.ALL,null,null);}static Node recent(){return new Node(Kind.RECENT,null,null);}static Node favorites(){return new Node(Kind.FAVORITES,null,null);}static Node collections(){return new Node(Kind.COLLECTIONS,null,null);}static Node collection(ParamCollection c){return new Node(Kind.COLLECTION,null,c);}static Node ungrouped(){return new Node(Kind.UNGROUPED,null,null);}static Node method(String m){return new Node(Kind.METHOD,m,null);}@Override public String toString(){return switch(kind){case ALL->"全部方案";case RECENT->"最近使用";case FAVORITES->"★ 收藏";case COLLECTIONS->"Collections";case COLLECTION->collection.getName();case UNGROUPED->"未归类";case METHOD->shortName(method);default->"";};}}
+  private final class CollectionTransfer extends TransferHandler{public int getSourceActions(JComponent c){return MOVE;}protected Transferable createTransferable(JComponent c){Node x=node(navTree.getSelectionPath());return x!=null&&x.kind==Kind.METHOD?new StringSelection(x.method):null;}public boolean canImport(TransferSupport s){if(!s.isDataFlavorSupported(DataFlavor.stringFlavor))return false;Node x=node(((JTree.DropLocation)s.getDropLocation()).getPath());return x!=null&&(x.kind==Kind.COLLECTION||x.kind==Kind.UNGROUPED);}public boolean importData(TransferSupport s){try{String method=(String)s.getTransferable().getTransferData(DataFlavor.stringFlavor);Node target=node(((JTree.DropLocation)s.getDropLocation()).getPath());collections.moveMethod(method,target.kind==Kind.UNGROUPED?ParamCollectionService.UNGROUPED:target.collection.getId());rebuildNav();return true;}catch(Exception e){return false;}}}
 }

@@ -6,12 +6,15 @@ import com.intellij.openapi.components.Storage;
 import com.intellij.openapi.project.Project;
 import com.intellij.util.xmlb.XmlSerializerUtil;
 import io.github.lgp547.anydoorplugin.dto.ParamCacheDto;
+import io.github.lgp547.anydoorplugin.data.domain.ParamCollection;
 import io.github.lgp547.anydoorplugin.util.JsonUtil;
 import io.github.lgp547.anydoorplugin.util.NotifierUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Map;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -27,6 +30,9 @@ public class AnyDoorSettingsState implements PersistentStateComponent<AnyDoorSet
     public Long pid = -1L;
 
     public Map<String, String> cache = new ConcurrentHashMap<>();
+
+    /** Local-only Postman-style navigation. Methods are referenced, never copied. */
+    public List<ParamCollection> paramCollections = new ArrayList<>();
 
     public Integer runProjectStrategy = 100; // 100 is Java attach, 200 is Spring mvc.
 

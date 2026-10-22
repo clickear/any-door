@@ -264,6 +264,21 @@ public final class DataContext implements Listener {
         });
     }
 
+    public void setFavoriteAsync(String qualifiedClassName, String qualifiedMethodName, Long id, boolean favorite,
+                                 Consumer<ParamMutationResult> consumer) {
+        ApplicationManager.getApplication().executeOnPooledThread(() -> {
+            ParamMutationResult result = setFavorite(qualifiedClassName, qualifiedMethodName, id, favorite);
+            ApplicationManager.getApplication().invokeLater(() -> {
+                if (!project.isDisposed()) {
+                    if (result.success()) {
+                        DefaultMulticaster.getInstance(project).fireEvent(EventHelper.createDataSyncEvent(qualifiedMethodName));
+                    }
+                    consumer.accept(result);
+                }
+            });
+        });
+    }
+
     private void rebuildSearchEngine() {
         searchEngine.rebuild(indexData.getDataList());
     }
@@ -330,6 +345,23 @@ public final class DataContext implements Listener {
         return ParamMutationResult.ok();
     }
 
+    private synchronized ParamMutationResult setFavorite(String qualifiedClassName, String qualifiedMethodName, Long id, boolean favorite) {
+        if (qualifiedClassName == null || id == null) return ParamMutationResult.failure("参数方案不存在");
+        Data<ParamDataItem> data = mutableClassData(qualifiedClassName);
+        synchronized (data.getDataList()) {
+            ParamDataItem item = data.getDataList().stream().filter(value -> Objects.equals(value.getId(), id)).findFirst().orElse(null);
+            if (item == null) return ParamMutationResult.failure("参数方案不存在");
+            item.setFavorite(favorite);
+            dataService.save(data);
+            synchronized (indexData.getDataList()) {
+                indexData.getDataList().stream().filter(value -> Objects.equals(value.getId(), id)).forEach(value -> value.setFavorite(favorite));
+                indexService.save(indexData);
+                rebuildSearchEngine();
+            }
+        }
+        return ParamMutationResult.ok();
+    }
+
     private Data<ParamDataItem> mutableClassData(String qualifiedClassName) {
         ClassDataContext cached = contextMap.get(qualifiedClassName);
         return cached == null ? dataService.find(qualifiedClassName) : cached.data;
@@ -350,6 +382,8 @@ public final class DataContext implements Listener {
         copy.setQualifiedMethodName(source.getQualifiedMethodName());
         copy.setUpdateTime(source.getUpdateTime());
         copy.setDeleted(source.getDeleted());
+        copy.setFavorite(source.getFavorite());
+        copy.setLastUsedAt(source.getLastUsedAt());
         return copy;
     }
 
@@ -358,6 +392,8 @@ public final class DataContext implements Listener {
         copy.setId(source.getId());
         copy.setUpdateTime(source.getUpdateTime());
         copy.setDeleted(source.getDeleted());
+        copy.setFavorite(source.getFavorite());
+        copy.setLastUsedAt(source.getLastUsedAt());
         return copy;
     }
 

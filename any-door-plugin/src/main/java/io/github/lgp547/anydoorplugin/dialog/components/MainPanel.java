@@ -43,6 +43,7 @@ public class MainPanel extends JBPanel<MainPanel> implements Listener {
     private final JButton saveChangesButton;
     private final JBIntSpinner runNum;
     private final JBCheckBox isConcurrent;
+    private final JButton choosePresetButton;
 
     public MainPanel(Project project, MethodDataContext context) {
         super(new GridBagLayout());
@@ -58,6 +59,7 @@ public class MainPanel extends JBPanel<MainPanel> implements Listener {
         saveChangesButton = new JButton("Save");
         runNum = new JBIntSpinner(1, 1, Integer.MAX_VALUE);
         isConcurrent = new JBCheckBox("", true);
+        choosePresetButton = new JButton("选择参数方案…");
 
         this.context.addListener(this);
 //        this.context.addListener(comboBox);
@@ -75,14 +77,16 @@ public class MainPanel extends JBPanel<MainPanel> implements Listener {
             if (param == null) {
                 return;
             }
-            new SaveDialog(
+            SaveDialog dialog = new SaveDialog(
                     project,
                     context::validatePresetName,
-                    dialog -> {
-                        ParamMutationResult result = context.saveAs(dialog.getName(), param);
+                    saveDialog -> {
+                        ParamMutationResult result = context.saveAs(saveDialog.getName(), param);
                         handleSaveResult(result, "Param preset saved");
                     }
-            ).show();
+            );
+            dialog.setName(context.suggestedPresetName());
+            dialog.show();
         });
 
         saveChangesButton.setEnabled(context.hasPersistedSelection());
@@ -101,6 +105,8 @@ public class MainPanel extends JBPanel<MainPanel> implements Listener {
         textField.setToolTipText("Run num");
 
         isConcurrent.setToolTipText("Concurrent run");
+        choosePresetButton.setToolTipText("先预览参数差异，再明确应用到本次调用");
+        choosePresetButton.addActionListener(event -> ParamPresetChooser.show(project, choosePresetButton, context, editor));
     }
 
     @Nullable
@@ -149,6 +155,7 @@ public class MainPanel extends JBPanel<MainPanel> implements Listener {
         panel.add(isConcurrent);
         panel.add(new JLabel("Runs"));
         panel.add(runNum);
+        panel.add(choosePresetButton);
         panel.add(saveAsButton);
         panel.add(saveChangesButton);
         add(panel, gbc);

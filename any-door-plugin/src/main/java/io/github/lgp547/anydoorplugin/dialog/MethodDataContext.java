@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.function.Predicate;
 
 import com.intellij.openapi.application.ReadAction;
@@ -83,6 +85,11 @@ public class MethodDataContext implements Multicaster, Listener {
         return qualifiedMethodName;
     }
 
+    public String suggestedPresetName() {
+        String method = IdeClassUtil.getSimpleMethodName(qualifiedMethodName);
+        return method + " · " + DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").format(LocalDateTime.now());
+    }
+
     public PsiClass getClazz() {
         return classDataContext.clazz;
     }
@@ -132,6 +139,28 @@ public class MethodDataContext implements Multicaster, Listener {
             dataItemList.add(freeItem);
         }
         return dataItemList;
+    }
+
+    /** Saved presets only. The temporary free item is intentionally excluded from library selection. */
+    public List<ParamDataItem> listPersistedData() {
+        return new ArrayList<>(dataItems);
+    }
+
+    public boolean applyPreset(Long id) {
+        Optional<ParamDataItem> item = findItem(id);
+        if (!item.isPresent()) return false;
+        ParamDataItem preset = item.get();
+        preset.setLastUsedAt(System.currentTimeMillis());
+        selectItem(preset);
+        clearEmptyItem();
+        String qualifiedClassName = getQualifiedClassName();
+        if (qualifiedClassName != null) {
+            DefaultMulticaster.getInstance(project).fireEvent(
+                    EventHelper.createGlobalUpdateDataChangeEvent(qualifiedClassName, qualifiedMethodName)
+            );
+        }
+        fireDataChangeEvent(true);
+        return true;
     }
 
     @Nullable
