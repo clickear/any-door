@@ -6,6 +6,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Predicate;
 
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiMethod;
@@ -25,6 +26,8 @@ import io.github.lgp547.anydoorplugin.dialog.event.Multicaster;
 import io.github.lgp547.anydoorplugin.dialog.event.impl.AddDataItemEvent;
 import io.github.lgp547.anydoorplugin.dialog.event.impl.SelectItemChangedEvent;
 import io.github.lgp547.anydoorplugin.dialog.event.impl.UpdateDataItemEvent;
+import io.github.lgp547.anydoorplugin.dialog.library.ParamMutationResult;
+import io.github.lgp547.anydoorplugin.dialog.library.ParamPresetRules;
 import io.github.lgp547.anydoorplugin.dialog.utils.EventHelper;
 import io.github.lgp547.anydoorplugin.dialog.utils.IdeClassUtil;
 import io.github.lgp547.anydoorplugin.util.JsonElementUtil;
@@ -70,6 +73,10 @@ public class MethodDataContext implements Multicaster, Listener {
 
     public ParamDataItem getSelectedItem() {
         return selectedItem;
+    }
+
+    public boolean hasPersistedSelection() {
+        return selectedItem != null && selectedItem.getId() != null;
     }
 
     public String getQualifiedMethodName() {
@@ -180,7 +187,7 @@ public class MethodDataContext implements Multicaster, Listener {
             findItem(null)
                     .ifPresentOrElse(
                             item -> {
-                                item.setParam(JsonElementUtil.getSimpleText(getParamList()));
+                                item.setParam(generateSimpleParamJson());
                                 selectItem(item);
                             },
                             this::resetEmptyItem);
@@ -188,7 +195,7 @@ public class MethodDataContext implements Multicaster, Listener {
             findItem(null)
                     .ifPresentOrElse(
                             item -> {
-                                item.setParam(JsonElementUtil.getJsonText(getParamList()));
+                                item.setParam(generateAllParamJson());
                                 selectItem(item);
                             },
                             this::resetEmptyItemFillParam);
@@ -205,12 +212,20 @@ public class MethodDataContext implements Multicaster, Listener {
 
     private void resetEmptyItemFillParam() {
         resetEmptyItem();
-        freeItem.setParam(JsonElementUtil.getJsonText(getParamList()));
+        freeItem.setParam(generateAllParamJson());
     }
 
     private void resetEmptyItem() {
-        freeItem = new ParamDataItem("", qualifiedMethodName, JsonElementUtil.getSimpleText(getParamList()));
+        freeItem = new ParamDataItem("", qualifiedMethodName, generateSimpleParamJson());
         selectItem(freeItem);
+    }
+
+    private String generateAllParamJson() {
+        return ReadAction.compute(() -> JsonElementUtil.getJsonText(getParamList()));
+    }
+
+    private String generateSimpleParamJson() {
+        return ReadAction.compute(() -> JsonElementUtil.getSimpleText(getParamList()));
     }
 
     private void resetLastCacheParam() {
@@ -253,15 +268,64 @@ public class MethodDataContext implements Multicaster, Listener {
         this.freeItem = null;
     }
 
+    @Nullable
+    public String validatePresetName(String name) {
+        ParamMutationResult result = ParamPresetRules.validateName(dataItems, qualifiedMethodName, null, name);
+        return result.success() ? null : result.message();
+    }
+
+    public ParamMutationResult saveAs(String name, String param) {
+        ParamMutationResult validation = ParamPresetRules.validateName(dataItems, qualifiedMethodName, null, name);
+        if (!validation.success()) {
+            return validation;
+        }
+        String normalizedName = ParamPresetRules.normalizeName(name);
+
+        String qualifiedClassName = getQualifiedClassName();
+        if (qualifiedClassName == null) {
+            return ParamMutationResult.failure("当前类不存在");
+        }
+
+        ParamDataItem item = new ParamDataItem(normalizedName, qualifiedMethodName, param);
+        dataItems.add(item);
+        selectedItem = item;
+        freeItem = null;
+        DefaultMulticaster.getInstance(project).fireEvent(
+                EventHelper.createGlobalSaveDataChangeEvent(qualifiedClassName, qualifiedMethodName, List.of(item))
+        );
+        fireDataChangeEvent(true);
+        return ParamMutationResult.ok();
+    }
+
+    public ParamMutationResult saveChanges(String param) {
+        if (!hasPersistedSelection()) {
+            return ParamMutationResult.failure("请先另存为参数方案");
+        }
+        String qualifiedClassName = getQualifiedClassName();
+        if (qualifiedClassName == null) {
+            return ParamMutationResult.failure("当前类不存在");
+        }
+
+        selectedItem.setParam(param);
+        DefaultMulticaster.getInstance(project).fireEvent(
+                EventHelper.createGlobalUpdateDataChangeEvent(qualifiedClassName, qualifiedMethodName)
+        );
+        return ParamMutationResult.ok();
+    }
+
     public void flush() {
         if (Objects.equals(selectedItem, freeItem)) {
-            clearEmptyItem();
-            ParamDataItem item = new ParamDataItem(selectedItem.getName(), selectedItem.getQualifiedName(), selectedItem.getParam());
-            selectedItem = item;
-
-            DefaultMulticaster.getInstance(project).fireEvent(EventHelper.createGlobalSaveDataChangeEvent(classDataContext.clazz.getQualifiedName(), qualifiedMethodName, List.of(item)));
+            saveAs(selectedItem.getName(), selectedItem.getParam());
         } else {
-            DefaultMulticaster.getInstance(project).fireEvent(EventHelper.createGlobalUpdateDataChangeEvent(classDataContext.clazz.getQualifiedName(), qualifiedMethodName));
+            saveChanges(selectedItem.getParam());
         }
+    }
+
+    @Nullable
+    private String getQualifiedClassName() {
+        if (classDataContext.clazz == null) {
+            return null;
+        }
+        return ReadAction.compute(classDataContext.clazz::getQualifiedName);
     }
 }

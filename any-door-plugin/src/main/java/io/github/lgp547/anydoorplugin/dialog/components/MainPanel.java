@@ -19,11 +19,13 @@ import io.github.lgp547.anydoorplugin.dialog.event.Event;
 import io.github.lgp547.anydoorplugin.dialog.event.EventType;
 import io.github.lgp547.anydoorplugin.dialog.event.impl.ImportExportEvent;
 import io.github.lgp547.anydoorplugin.dialog.event.Listener;
+import io.github.lgp547.anydoorplugin.dialog.library.ParamMutationResult;
 import io.github.lgp547.anydoorplugin.dialog.utils.EventHelper;
 import io.github.lgp547.anydoorplugin.dialog.utils.JavaFileInfoUtil;
 import io.github.lgp547.anydoorplugin.util.JsonUtil;
 import io.github.lgp547.anydoorplugin.util.NotifierUtil;
 import org.apache.commons.lang3.StringUtils;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * @description:
@@ -37,7 +39,8 @@ public class MainPanel extends JBPanel<MainPanel> implements Listener {
     private final MyEditor editor;
 //    private final MyComboBox comboBox;
     private final MethodDataContext context;
-//    private final JButton saveParamButton;
+    private final JButton saveAsButton;
+    private final JButton saveChangesButton;
     private final JBIntSpinner runNum;
     private final JBCheckBox isConcurrent;
 
@@ -51,7 +54,8 @@ public class MainPanel extends JBPanel<MainPanel> implements Listener {
         toolBar = new MyToolBar(project, context);
         editor = new MyEditor(context, context.cacheContent, context.getParamList(), project);
 //        comboBox = new MyComboBox(project, context);
-//        saveParamButton = new JButton("Save");
+        saveAsButton = new JButton("Save As");
+        saveChangesButton = new JButton("Save");
         runNum = new JBIntSpinner(1, 1, Integer.MAX_VALUE);
         isConcurrent = new JBCheckBox("", true);
 
@@ -66,29 +70,30 @@ public class MainPanel extends JBPanel<MainPanel> implements Listener {
     }
 
     private void initComponent() {
-//        saveParamButton.addActionListener(e -> {
-//            if (Objects.isNull(context.getClazz())) {
-//                throw new RuntimeException("Current Class Not Exist");
-//            }
-//
-//            JSONEditor editor = this.getEditor();
-//            String text = JsonUtil.compressJson(editor.getText());
-//
-//            ParamDataItem selectedDataItem = context.getSelectedItem();
-//            selectedDataItem.setParam(text);
-//
-//            if (StringUtils.isBlank(selectedDataItem.getName())) {
-//                new SaveDialog(project, (dialog) -> {
-//                    String name = dialog.getName().trim();
-//                    selectedDataItem.setName(name);
-//                    context.flush();
-//                    NotifierUtil.notifyInfo(project, "Save " + selectedDataItem.getName() + " success");
-//                }).show();
-//            } else {
-//                context.flush();
-//                NotifierUtil.notifyInfo(project, "Save " + selectedDataItem.getName() + " success");
-//            }
-//        });
+        saveAsButton.addActionListener(e -> {
+            String param = getValidParam();
+            if (param == null) {
+                return;
+            }
+            new SaveDialog(
+                    project,
+                    context::validatePresetName,
+                    dialog -> {
+                        ParamMutationResult result = context.saveAs(dialog.getName(), param);
+                        handleSaveResult(result, "Param preset saved");
+                    }
+            ).show();
+        });
+
+        saveChangesButton.setEnabled(context.hasPersistedSelection());
+        saveChangesButton.addActionListener(e -> {
+            String param = getValidParam();
+            if (param == null) {
+                return;
+            }
+            ParamMutationResult result = context.saveChanges(param);
+            handleSaveResult(result, "Param preset updated");
+        });
 
         JFormattedTextField textField = ((JSpinner.DefaultEditor) runNum.getEditor()).getTextField();
         textField.setColumns(7); // 设置输入框的宽度为10个字符
@@ -96,6 +101,30 @@ public class MainPanel extends JBPanel<MainPanel> implements Listener {
         textField.setToolTipText("Run num");
 
         isConcurrent.setToolTipText("Concurrent run");
+    }
+
+    @Nullable
+    private String getValidParam() {
+        String text = editor.getText();
+        if (StringUtils.isBlank(text)) {
+            NotifierUtil.notifyError(project, "Param JSON is empty");
+            return null;
+        }
+        try {
+            return JsonUtil.objectMapper.readTree(text).toString();
+        } catch (Exception exception) {
+            NotifierUtil.notifyError(project, "JSON format error: " + exception.getMessage());
+            return null;
+        }
+    }
+
+    private void handleSaveResult(ParamMutationResult result, String successMessage) {
+        if (!result.success()) {
+            NotifierUtil.notifyError(project, result.message());
+            return;
+        }
+        saveChangesButton.setEnabled(true);
+        NotifierUtil.notifyInfo(project, successMessage);
     }
 
 
@@ -116,8 +145,12 @@ public class MainPanel extends JBPanel<MainPanel> implements Listener {
         gbc.gridx = 0;
         gbc.gridy = 1;
         JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
+        panel.add(new JLabel("Concurrent"));
         panel.add(isConcurrent);
+        panel.add(new JLabel("Runs"));
         panel.add(runNum);
+        panel.add(saveAsButton);
+        panel.add(saveChangesButton);
         add(panel, gbc);
 
 //        gbc.fill = GridBagConstraints.LINE_START;

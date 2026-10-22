@@ -2,6 +2,7 @@ package io.github.lgp547.anydoorplugin.dialog.components;
 
 import java.awt.*;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 import javax.swing.*;
 
@@ -23,10 +24,18 @@ public class SaveDialog extends DialogWrapper {
     private final JBTextField textField;
 
     private final Consumer<SaveDialog> consumer;
+    private final Function<String, String> nameValidator;
 
     public SaveDialog(@Nullable Project project, Consumer<SaveDialog> consumer) {
+        this(project, name -> null, consumer);
+    }
+
+    public SaveDialog(@Nullable Project project,
+                      Function<String, String> nameValidator,
+                      Consumer<SaveDialog> consumer) {
         super(project, true, IdeModalityType.IDE);
         this.textField = new JBTextField();
+        this.nameValidator = nameValidator;
         this.consumer = consumer;
 
         init();
@@ -45,6 +54,10 @@ public class SaveDialog extends DialogWrapper {
     protected @Nullable ValidationInfo doValidate() {
         if (StringUtils.isBlank(textField.getText())) {
             return new ValidationInfo("Name is empty", textField);
+        }
+        String validationMessage = nameValidator.apply(textField.getText());
+        if (StringUtils.isNotBlank(validationMessage)) {
+            return new ValidationInfo(validationMessage, textField);
         }
         return super.doValidate();
     }

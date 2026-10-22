@@ -1,5 +1,5 @@
 <!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
-<idea-plugin require-restart="false">
+<idea-plugin require-restart="true">
     <id>io.github.lgp547.any-door-plugin</id>
     <name>AnyDoor</name>
     <vendor email="lgp547279@163.com" url="https://github.com/lgp547">lgp</vendor>
@@ -25,6 +25,16 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <strong>2.3.0 参数库版本</strong>
+        <ul>
+            <li>[feat]参数库升级为类、方法、参数方案三级树形展示</li>
+            <li>[feat]支持搜索、JSON 预览、重命名、批量删除和双击打开</li>
+            <li>[feat]调用窗口支持另存为参数方案和保存修改</li>
+        </ul>
+        <strong>2.2.10 修复版本</strong>
+        <ul>
+            <li>[fix]修复 IDEA 2026.2 中生成全部参数示例时的 PSI 读访问异常</li>
+        </ul>
         <strong>2.2.9 修复版本</strong>
         <ul>
             <li>[fix]修复 MANIFEST.MF 文件中替换符未正常替换的问题</li>
@@ -79,8 +89,9 @@
 <!--                             instance=""/>-->
 
         <!-- 窗体 (IDEA 界面右侧) -->
-<!--        <toolWindow id="Any-Door" secondary="false" anchor="right" icon="io.github.lgp547.anydoorplugin.util.AnyDoorIcons.default_icon"-->
-<!--                    factoryClass="io.github.lgp547.anydoorplugin.action.ParamListMenuToolWindow"/>-->
+        <toolWindow id="Any-Door" secondary="false" anchor="right"
+                    icon="io.github.lgp547.anydoorplugin.util.AnyDoorIcons.default_icon"
+                    factoryClass="io.github.lgp547.anydoorplugin.action.ParamListMenuToolWindow"/>
 
         <!-- notice -->
         <applicationService serviceImplementation="io.github.lgp547.anydoorplugin.util.NotifierUtil"/>

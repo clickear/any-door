@@ -1,6 +1,6 @@
 import javax.xml.parsers.DocumentBuilderFactory
-
-fun properties(key: String) = providers.gradleProperty(key)
+import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
+import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 
 fun readRevisionFromRootPom(): String {
     val pomFile = file("../pom.xml")
@@ -14,16 +14,26 @@ fun readRevisionFromRootPom(): String {
 
 plugins {
     id("java")
-    id("org.jetbrains.intellij") version "1.12.0" /*https://plugins.gradle.org/m2/org/jetbrains/intellij/plugins/gradle-intellij-plugin*/
+    id("org.jetbrains.intellij.platform") version "2.19.0"
 }
 
 group = "io.github.lgp547"
 val anyDoorVersion = readRevisionFromRootPom()
+val compatibilityVersions = providers.gradleProperty("compatibilityVersions")
+    .orElse("2024.3,2025.1,2025.2,2025.3,2026.1,2026.2")
+    .get()
+    .split(",")
+    .map(String::trim)
+    .filter(String::isNotEmpty)
+val localVerificationIdePath = providers.gradleProperty("localVerificationIdePath").orNull
 version = anyDoorVersion
 
 repositories {
     mavenCentral()
     mavenLocal()
+    intellijPlatform {
+        defaultRepositories()
+    }
 }
 
 dependencies {
@@ -32,16 +42,15 @@ dependencies {
 
     testImplementation(platform("org.junit:junit-bom:5.10.2"))
     testImplementation("org.junit.jupiter:junit-jupiter")
-}
+    testImplementation("junit:junit:4.13.2")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 
-// Configure Gradle IntelliJ Plugin - read more: https://github.com/JetBrains/gradle-intellij-plugin
-intellij {
-    // todo：若没商业版授权，这里改成社区版进行调式
-    version.set("2024.3") // 沙盒 idea 的版本
-//    type.set("IU") // 商业版
-    type.set("IC") // 社区版
-
-    plugins.set(listOf("com.intellij.java", "com.intellij.modules.json"))
+    intellijPlatform {
+        intellijIdea("2024.3")
+        bundledPlugin("com.intellij.java")
+        bundledPlugin("com.intellij.modules.json")
+        testFramework(TestFrameworkType.Platform)
+    }
 }
 
 tasks {
@@ -57,23 +66,34 @@ tasks {
 
     // Set the JVM compatibility versions
     withType<JavaCompile> {
-        sourceCompatibility = "17"
-        targetCompatibility = "17"
+        sourceCompatibility = "21"
+        targetCompatibility = "21"
         options.encoding = "UTF-8"
     }
+}
 
-    patchPluginXml {
-        sinceBuild.set(properties("pluginSinceBuild"))
-        untilBuild.set(properties("pluginUntilBuild"))
+intellijPlatform {
+    pluginConfiguration {
+        version = project.version.toString()
+        ideaVersion {
+            sinceBuild = providers.gradleProperty("pluginSinceBuild")
+        }
     }
 
-//    signPlugin {
-//        certificateChain.set(System.getenv("CERTIFICATE_CHAIN"))
-//        privateKey.set(System.getenv("PRIVATE_KEY"))
-//        password.set(System.getenv("PRIVATE_KEY_PASSWORD"))
-//    }
-//
-//    publishPlugin {
-//        token.set(System.getenv("PUBLISH_TOKEN"))
-//    }
+    pluginVerification {
+        ides {
+            if (localVerificationIdePath != null) {
+                local(file(localVerificationIdePath))
+            } else {
+                compatibilityVersions.forEach { ideVersion ->
+                    val platformType = if (ideVersion in setOf("2024.3", "2025.1", "2025.2")) {
+                        IntelliJPlatformType.IntellijIdeaCommunity
+                    } else {
+                        IntelliJPlatformType.IntellijIdea
+                    }
+                    create(platformType, ideVersion)
+                }
+            }
+        }
+    }
 }

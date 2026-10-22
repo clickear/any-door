@@ -15,6 +15,9 @@ import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.TableCellEditor;
 import javax.swing.table.TableCellRenderer;
 
+import com.intellij.openapi.Disposable;
+import com.intellij.openapi.application.ReadAction;
+import com.intellij.openapi.application.WriteIntentReadAction;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.fileEditor.FileEditorManagerEvent;
 import com.intellij.openapi.fileEditor.FileEditorManagerListener;
@@ -66,7 +69,7 @@ import org.jetbrains.annotations.Nullable;
  * @author: zhouh
  * @date: 2023-06-16 20:35
  **/
-public class ParamListUI extends JPanel implements Listener {
+public class ParamListUI extends JPanel implements Listener, Disposable {
 
     private static final int REFRESH_DEBOUNCE_MS = 120;
     private static final int SEARCH_DEBOUNCE_MS = 180;
@@ -80,7 +83,7 @@ public class ParamListUI extends JPanel implements Listener {
     private final Project project;
 
     private final RefreshRequestState refreshRequestState = new RefreshRequestState();
-    private final Alarm refreshAlarm = new Alarm();
+    private final Alarm refreshAlarm;
 
     private JBPopup myPopup;
     @Nullable
@@ -88,6 +91,7 @@ public class ParamListUI extends JPanel implements Listener {
 
     public ParamListUI(Project project) {
         this.project = project;
+        this.refreshAlarm = new Alarm(Alarm.ThreadToUse.SWING_THREAD, this);
         DefaultMulticaster.getInstance(project).addListener(this);
 
 
@@ -110,10 +114,11 @@ public class ParamListUI extends JPanel implements Listener {
         toolBar.addToolButton("Delete", AnyDoorIcons.delete_icon, AnyDoorIcons.delete_hover_icon, e -> deleteAction());
 
         toolBar.addToolButton("Refresh", AnyDoorIcons.refresh_icon, AnyDoorIcons.refresh_hover_icon, e -> {
-            if (context == null || context.clazz == null) {
+            String qualifiedName = getContextQualifiedName();
+            if (qualifiedName == null) {
                 return;
             }
-            scheduleRefresh(context.clazz.getQualifiedName(), true);
+            scheduleRefresh(qualifiedName, true);
         });
 
         toolBar.addToolButton("Find", AnyDoorIcons.search_icon, AnyDoorIcons.search_icon, e -> findAction());
@@ -142,7 +147,8 @@ public class ParamListUI extends JPanel implements Listener {
             }
         });
 
-        Alarm searchAlarm = new Alarm();
+        Disposable popupDisposable = Disposer.newDisposable();
+        Alarm searchAlarm = new Alarm(Alarm.ThreadToUse.SWING_THREAD, popupDisposable);
         LatestRequestToken latestSearchToken = new LatestRequestToken();
 
         searchTextField.addDocumentListener(new DocumentAdapter() {
@@ -176,6 +182,7 @@ public class ParamListUI extends JPanel implements Listener {
                 .setCancelOnWindowDeactivation(true)
                 .createPopup();
 
+        Disposer.register(myPopup, popupDisposable);
         Disposer.register(myPopup, () -> myPopup = null);
 
         myPopup.showInFocusCenter();
@@ -244,22 +251,24 @@ public class ParamListUI extends JPanel implements Listener {
                     int index = qName.lastIndexOf("#");
                     String className = qName.substring(0, index);
 
-                    AnyDoorSettingsState service = project.getService(AnyDoorSettingsState.class);
-                    PsiClass psiClass = IdeClassUtil.findClass(project, className);
-                    PsiMethod psiMethod = IdeClassUtil.findMethod(project, qName);
-                    if (Objects.isNull(psiClass) || Objects.isNull(psiMethod)) {
-                        NotifierUtil.notifyError(project, "class or method not found");
-                        return;
-                    }
-                    new AnyDoorPerformed().doUseNewUI(service, project, psiClass, psiMethod, AnyDoorActionUtil.genCacheKey(psiClass, psiMethod),
-                            () -> AnyDoorAgainOpenAction.PRE_METHOD_MAP.put(project.getName(), psiMethod), dataItemId);
+                    WriteIntentReadAction.run((Runnable) () -> {
+                        AnyDoorSettingsState service = project.getService(AnyDoorSettingsState.class);
+                        PsiClass psiClass = IdeClassUtil.findClass(project, className);
+                        PsiMethod psiMethod = IdeClassUtil.findMethod(project, qName);
+                        if (Objects.isNull(psiClass) || Objects.isNull(psiMethod)) {
+                            NotifierUtil.notifyError(project, "class or method not found");
+                            return;
+                        }
+                        new AnyDoorPerformed().doUseNewUI(service, project, psiClass, psiMethod, AnyDoorActionUtil.genCacheKey(psiClass, psiMethod),
+                                () -> AnyDoorAgainOpenAction.PRE_METHOD_MAP.put(project.getName(), psiMethod), dataItemId);
+                    });
                 }
             }
         });
     }
 
     private void registerFileEditorToRefreshDataList() {
-        MessageBusConnection connection = project.getMessageBus().connect();
+        MessageBusConnection connection = project.getMessageBus().connect(this);
 
         connection.subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, new FileEditorManagerListener() {
             @Override
@@ -314,17 +323,28 @@ public class ParamListUI extends JPanel implements Listener {
         if (Objects.isNull(file)) {
             throw new IllegalArgumentException("file can not be null");
         }
-        PsiManager psiManager = PsiManager.getInstance(project);
-        PsiFile psiFile = psiManager.findFile(file);
-        if (Objects.nonNull(psiFile) && psiFile instanceof PsiJavaFile) {
-            PsiJavaFile psiJavaFile = (PsiJavaFile) psiFile;
-            String packageName = psiJavaFile.getPackageName();
-            if (!packageName.isEmpty()) {
-                packageName += ".";
+        return ReadAction.compute(() -> {
+            PsiManager psiManager = PsiManager.getInstance(project);
+            PsiFile psiFile = psiManager.findFile(file);
+            if (Objects.nonNull(psiFile) && psiFile instanceof PsiJavaFile) {
+                PsiJavaFile psiJavaFile = (PsiJavaFile) psiFile;
+                String packageName = psiJavaFile.getPackageName();
+                if (!packageName.isEmpty()) {
+                    packageName += ".";
+                }
+                return packageName + psiJavaFile.getName().replace(".java", "");
             }
-            return packageName + psiJavaFile.getName().replace(".java", "");
+            return null;
+        });
+    }
+
+    @Nullable
+    private String getContextQualifiedName() {
+        ClassDataContext currentContext = context;
+        if (currentContext == null || currentContext.clazz == null) {
+            return null;
         }
-        return null;
+        return ReadAction.compute(currentContext.clazz::getQualifiedName);
     }
 
     private void paramListLayout() {
@@ -352,10 +372,20 @@ public class ParamListUI extends JPanel implements Listener {
     @Override
     public void onEvent(Event event) {
         if (Objects.equals(event.getType(), EventType.DATA_SYNC)) {
-            if (context != null && context.clazz != null) {
-                scheduleRefresh(context.clazz.getQualifiedName(), true);
+            String qualifiedName = getContextQualifiedName();
+            if (qualifiedName != null) {
+                scheduleRefresh(qualifiedName, true);
             }
         }
+    }
+
+    @Override
+    public void dispose() {
+        DefaultMulticaster.getInstance(project).removeListener(this);
+        if (myPopup != null) {
+            myPopup.cancel();
+        }
+        context = null;
     }
 
 

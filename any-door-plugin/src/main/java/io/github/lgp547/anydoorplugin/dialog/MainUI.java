@@ -7,6 +7,7 @@ import java.util.function.Consumer;
 import javax.swing.*;
 
 import com.intellij.icons.AllIcons;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.ui.ValidationInfo;
@@ -96,8 +97,9 @@ public class MainUI extends DialogWrapper implements Listener {
             return null;
         }
         AnyDoorSettingsState settings = project.getService(AnyDoorSettingsState.class);
-        ValidationInfo validationInfo = ParamValidationUtil.validate(panel.getEditor().getText(), context.getParamList(),
-                settings == null ? null : settings.jsonDateTimeFormat, panel.getEditor());
+        ValidationInfo validationInfo = ReadAction.compute(() ->
+                ParamValidationUtil.validate(panel.getEditor().getText(), context.getParamList(),
+                        settings == null ? null : settings.jsonDateTimeFormat, panel.getEditor()));
         if (validationInfo != null) {
             return validationInfo;
         }
@@ -119,8 +121,9 @@ public class MainUI extends DialogWrapper implements Listener {
         if (Objects.equals(EventType.DATA_SYNC, event.getType()) && context != null) {
             DataSyncEvent syncEvent = (DataSyncEvent) event;
             if (Objects.equals(syncEvent.getQualifiedMethodName(), context.getQualifiedMethodName()) && context.getClazz() != null) {
+                String qualifiedClassName = ReadAction.compute(() -> context.getClazz().getQualifiedName());
                 DataContext.instance(project).getExecuteDataContextAsync(
-                        context.getClazz().getQualifiedName(),
+                        qualifiedClassName,
                         context.getQualifiedMethodName(),
                         context.getSelectedItem() == null ? null : context.getSelectedItem().getId(),
                         context.cacheContent,

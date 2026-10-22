@@ -19,10 +19,13 @@ import io.github.lgp547.anydoorplugin.dialog.event.EventType;
 import io.github.lgp547.anydoorplugin.dialog.event.DefaultMulticaster;
 import io.github.lgp547.anydoorplugin.dialog.event.Listener;
 import io.github.lgp547.anydoorplugin.dialog.event.impl.GlobalDataChangeEvent;
+import io.github.lgp547.anydoorplugin.dialog.library.ParamLibraryDataUpdater;
+import io.github.lgp547.anydoorplugin.dialog.library.ParamMutationResult;
 import io.github.lgp547.anydoorplugin.dialog.utils.EventHelper;
 import io.github.lgp547.anydoorplugin.dialog.utils.IdeClassUtil;
 import io.github.lgp547.anydoorplugin.dto.ParamCacheDto;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -156,7 +159,10 @@ public final class DataContext implements Listener {
             } else if (Objects.equals(event.getType(), EventType.GLOBAL_UPDATE_DATA_CHANGE)) {
                 contextMap.computeIfPresent(changeEvent.getQualifiedClassName(), (k, v) -> {
 
-                    List<ParamIndexData> dataList = v.data.getDataList().stream().map(ParamDataItem::toIndexData).collect(Collectors.toList());
+                    List<ParamIndexData> dataList = v.data.getDataList().stream()
+                            .filter(item -> Objects.equals(item.getQualifiedName(), changeEvent.getQualifiedMethodName()))
+                            .map(ParamDataItem::toIndexData)
+                            .collect(Collectors.toList());
                     indexData.getDataList().removeIf(item -> Objects.equals(item.getQualifiedMethodName(), changeEvent.getQualifiedMethodName()));
 
                     indexData.getDataList().addAll(dataList);
@@ -182,8 +188,177 @@ public final class DataContext implements Listener {
         });
     }
 
+    public List<ParamIndexData> listParamIndexData() {
+        synchronized (indexData.getDataList()) {
+            return indexData.getDataList().stream()
+                    .map(DataContext::copyIndexData)
+                    .collect(Collectors.toList());
+        }
+    }
+
+    public void listParamIndexDataAsync(Consumer<List<ParamIndexData>> consumer) {
+        Objects.requireNonNull(consumer);
+        ApplicationManager.getApplication().executeOnPooledThread(() -> {
+            List<ParamIndexData> result = listParamIndexData();
+            ApplicationManager.getApplication().invokeLater(() -> {
+                if (!project.isDisposed()) {
+                    consumer.accept(result);
+                }
+            });
+        });
+    }
+
+    public void findParamDataAsync(String qualifiedClassName, Long id, Consumer<ParamDataItem> consumer) {
+        Objects.requireNonNull(qualifiedClassName);
+        Objects.requireNonNull(id);
+        Objects.requireNonNull(consumer);
+        ApplicationManager.getApplication().executeOnPooledThread(() -> {
+            ParamDataItem result = findParamData(qualifiedClassName, id);
+            ApplicationManager.getApplication().invokeLater(() -> {
+                if (!project.isDisposed()) {
+                    consumer.accept(result);
+                }
+            });
+        });
+    }
+
+    public void renameParamDataAsync(String qualifiedClassName,
+                                     String qualifiedMethodName,
+                                     Long id,
+                                     String newName,
+                                     Consumer<ParamMutationResult> consumer) {
+        Objects.requireNonNull(consumer);
+        ApplicationManager.getApplication().executeOnPooledThread(() -> {
+            ParamMutationResult result = renameParamData(qualifiedClassName, qualifiedMethodName, id, newName);
+            ApplicationManager.getApplication().invokeLater(() -> {
+                if (!project.isDisposed()) {
+                    if (result.success()) {
+                        DefaultMulticaster.getInstance(project).fireEvent(EventHelper.createDataSyncEvent(qualifiedMethodName));
+                    }
+                    consumer.accept(result);
+                }
+            });
+        });
+    }
+
+    public void deleteParamDataAsync(Collection<ParamIndexData> items, Consumer<ParamMutationResult> consumer) {
+        Objects.requireNonNull(consumer);
+        List<ParamIndexData> snapshot = items == null
+                ? List.of()
+                : items.stream().filter(Objects::nonNull).map(DataContext::copyIndexData).collect(Collectors.toList());
+        ApplicationManager.getApplication().executeOnPooledThread(() -> {
+            ParamMutationResult result = deleteParamData(snapshot);
+            ApplicationManager.getApplication().invokeLater(() -> {
+                if (!project.isDisposed()) {
+                    if (result.success()) {
+                        snapshot.stream()
+                                .map(ParamIndexData::getQualifiedMethodName)
+                                .filter(Objects::nonNull)
+                                .distinct()
+                                .forEach(method -> DefaultMulticaster.getInstance(project)
+                                        .fireEvent(EventHelper.createDataSyncEvent(method)));
+                    }
+                    consumer.accept(result);
+                }
+            });
+        });
+    }
+
     private void rebuildSearchEngine() {
         searchEngine.rebuild(indexData.getDataList());
+    }
+
+    private synchronized ParamDataItem findParamData(String qualifiedClassName, Long id) {
+        Data<ParamDataItem> data = mutableClassData(qualifiedClassName);
+        return data.getDataList().stream()
+                .filter(item -> Objects.equals(item.getId(), id))
+                .findFirst()
+                .map(DataContext::copyParamData)
+                .orElse(null);
+    }
+
+    private synchronized ParamMutationResult renameParamData(String qualifiedClassName,
+                                                             String qualifiedMethodName,
+                                                             Long id,
+                                                             String newName) {
+        Data<ParamDataItem> data = mutableClassData(qualifiedClassName);
+        synchronized (data.getDataList()) {
+            synchronized (indexData.getDataList()) {
+                ParamMutationResult result = ParamLibraryDataUpdater.rename(
+                        data.getDataList(), indexData.getDataList(), qualifiedMethodName, id, newName
+                );
+                if (!result.success()) {
+                    return result;
+                }
+                dataService.save(data);
+                indexService.save(indexData);
+                rebuildSearchEngine();
+            }
+        }
+        return ParamMutationResult.ok();
+    }
+
+    private synchronized ParamMutationResult deleteParamData(Collection<ParamIndexData> items) {
+        if (items == null || items.isEmpty()) {
+            return ParamMutationResult.failure("请选择要删除的参数方案");
+        }
+
+        Map<String, List<ParamIndexData>> byClass = items.stream()
+                .filter(item -> classNameOf(item.getQualifiedMethodName()) != null)
+                .collect(Collectors.groupingBy(item -> classNameOf(item.getQualifiedMethodName())));
+        if (byClass.isEmpty()) {
+            return ParamMutationResult.failure("参数方案缺少方法信息");
+        }
+
+        Set<Long> ids = items.stream().map(ParamIndexData::getId).filter(Objects::nonNull).collect(Collectors.toSet());
+        byClass.forEach((className, classItems) -> {
+            Data<ParamDataItem> data = mutableClassData(className);
+            synchronized (data.getDataList()) {
+                ParamLibraryDataUpdater.removeDataItems(
+                        data.getDataList(),
+                        classItems.stream().map(ParamIndexData::getId).collect(Collectors.toSet())
+                );
+                dataService.save(data);
+            }
+        });
+
+        synchronized (indexData.getDataList()) {
+            ParamLibraryDataUpdater.removeIndexItems(indexData.getDataList(), ids);
+            indexService.save(indexData);
+            rebuildSearchEngine();
+        }
+        return ParamMutationResult.ok();
+    }
+
+    private Data<ParamDataItem> mutableClassData(String qualifiedClassName) {
+        ClassDataContext cached = contextMap.get(qualifiedClassName);
+        return cached == null ? dataService.find(qualifiedClassName) : cached.data;
+    }
+
+    private static String classNameOf(String qualifiedMethodName) {
+        if (qualifiedMethodName == null) {
+            return null;
+        }
+        int separator = qualifiedMethodName.lastIndexOf('#');
+        return separator <= 0 ? null : qualifiedMethodName.substring(0, separator);
+    }
+
+    private static ParamIndexData copyIndexData(ParamIndexData source) {
+        ParamIndexData copy = new ParamIndexData();
+        copy.setId(source.getId());
+        copy.setName(source.getName());
+        copy.setQualifiedMethodName(source.getQualifiedMethodName());
+        copy.setUpdateTime(source.getUpdateTime());
+        copy.setDeleted(source.getDeleted());
+        return copy;
+    }
+
+    private static ParamDataItem copyParamData(ParamDataItem source) {
+        ParamDataItem copy = new ParamDataItem(source.getName(), source.getQualifiedName(), source.getParam());
+        copy.setId(source.getId());
+        copy.setUpdateTime(source.getUpdateTime());
+        copy.setDeleted(source.getDeleted());
+        return copy;
     }
 
     private ClassDataContext buildClassDataContext(String qualifiedClassName, boolean noCache) {

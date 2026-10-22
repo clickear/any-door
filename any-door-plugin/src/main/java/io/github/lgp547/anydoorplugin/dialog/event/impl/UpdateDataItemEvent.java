@@ -33,6 +33,6 @@ public class UpdateDataItemEvent implements DataEvent {
 
     @Override
     public EventType getType() {
-        return EventType.UPDATE_DATA_ITEM;
+        return type;
     }
 }
