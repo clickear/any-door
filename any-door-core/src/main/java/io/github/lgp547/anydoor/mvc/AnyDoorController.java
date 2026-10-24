@@ -23,6 +23,7 @@ import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseBody;
+import java.util.concurrent.CompletableFuture;
 
 @Controller
 public class AnyDoorController {
@@ -35,6 +36,12 @@ public class AnyDoorController {
     public Object run(@RequestBody AnyDoorRunDto anyDoorDto) {
         AnyDoorService anyDoorService = new AnyDoorService();
         return anyDoorService.run(anyDoorDto);
+    }
+
+    @RequestMapping("/any_door/run-result")
+    @ResponseBody
+    public CompletableFuture<Object> runResult(@RequestBody AnyDoorRunDto anyDoorDto) {
+        return new AnyDoorService().runForResult(anyDoorDto);
     }
     
 }

@@ -7,6 +7,8 @@ import com.intellij.openapi.project.Project;
 import io.github.lgp547.anydoorplugin.AnyDoorInfo;
 import io.github.lgp547.anydoorplugin.dialog.BeanSelectionDialog;
 import io.github.lgp547.anydoorplugin.settings.AnyDoorSettingsState;
+import io.github.lgp547.anydoorplugin.result.InvocationResultCodec;
+import io.github.lgp547.anydoorplugin.result.InvocationResultService;
 import io.github.lgp547.anydoorplugin.util.HttpUtil;
 import io.github.lgp547.anydoorplugin.util.ImportNewUtil;
 import io.github.lgp547.anydoorplugin.util.VmUtil;
@@ -113,14 +115,24 @@ public final class BeanSelectionService {
 
     private static void send(Project project, Target target, JsonObject request,
                              BiConsumer<String, Exception> errors, Runnable onDispatch) {
+        String invocation = request.get("className").getAsString() + "#" + request.get("methodName").getAsString();
+        String resultId = InvocationResultService.instance(project).begin(invocation, target.description());
         if (!target.attach) {
             onDispatch.run();
-            HttpUtil.postAsyncByJdk(target.url, request.toString(), errors);
+            HttpUtil.postAsync(target.url + "-result", request.toString()).whenComplete((response, failure) -> {
+                if (failure != null) {
+                    Exception error = unwrap(failure);
+                    InvocationResultService.instance(project).failure(resultId, error);
+                    errors.accept(target.description(), error);
+                } else InvocationResultService.instance(project).success(resultId, InvocationResultCodec.prettyResponse(response));
+            });
             return;
         }
         if (request.has("resultPath")) {
             onDispatch.run();
-            attach(project, target, request, errors);
+            Path result = Path.of(request.get("resultPath").getAsString());
+            attach(project, target, request, errors).thenCompose(ignored -> readWhenReady(result))
+                    .whenComplete((envelope, failure) -> completeAttach(project, resultId, envelope, failure, errors, target));
             return;
         }
         // Dialog calls also need an acknowledgement: loadAgent can return normally
@@ -130,20 +142,56 @@ public final class BeanSelectionService {
             Files.createDirectories(acknowledgement.getParent());
             request.addProperty("resultPath", acknowledgement.toString());
             onDispatch.run();
-            attach(project, target, request, errors).whenComplete((ignored, failure) -> {
+            attach(project, target, request, errors).thenCompose(ignored -> readWhenReady(acknowledgement)).whenComplete((envelope, failure) -> {
                 try {
                     if (failure != null) throw new IllegalStateException(failure);
-                    if (!Files.exists(acknowledgement)) return;
-                    JsonObject response = JsonParser.parseString(Files.readString(acknowledgement)).getAsJsonObject();
-                    if ("error".equals(response.get("status").getAsString())) {
-                        errors.accept(target.description(), new IllegalStateException(response.get("result").getAsString()));
-                    }
-                } catch (Exception e) { errors.accept(target.description(), e); }
+                    completeEnvelope(project, resultId, envelope, errors, target);
+                } catch (Exception e) { InvocationResultService.instance(project).failure(resultId, e); errors.accept(target.description(), e); }
                 finally {
                     try { Files.deleteIfExists(acknowledgement); } catch (Exception ignoredError) { }
                 }
             });
-        } catch (Exception e) { errors.accept(target.description(), e); }
+        } catch (Exception e) { InvocationResultService.instance(project).failure(resultId, e); errors.accept(target.description(), e); }
+    }
+
+    private static void completeAttach(Project project, String resultId, String envelope, Throwable failure,
+                                       BiConsumer<String, Exception> errors, Target target) {
+        try {
+            if (failure != null) throw new IllegalStateException(failure);
+            completeEnvelope(project, resultId, envelope, errors, target);
+        } catch (Exception e) {
+            InvocationResultService.instance(project).failure(resultId, e); errors.accept(target.description(), e);
+        }
+    }
+
+    private static CompletableFuture<String> readWhenReady(Path result) {
+        return CompletableFuture.supplyAsync(() -> {
+            long deadline = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(5);
+            while (System.currentTimeMillis() < deadline) {
+                try {
+                    if (Files.exists(result)) return Files.readString(result);
+                    Thread.sleep(100);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt(); throw new IllegalStateException("Interrupted while waiting for invocation result", interrupted);
+                } catch (Exception error) { throw new IllegalStateException("Unable to read invocation result", error); }
+            }
+            throw new IllegalStateException("Invocation result timed out after 5 minutes");
+        });
+    }
+
+    private static void completeEnvelope(Project project, String resultId, String envelope,
+                                         BiConsumer<String, Exception> errors, Target target) {
+        InvocationResultCodec.Decoded decoded = InvocationResultCodec.decodeAttach(envelope);
+        if (decoded.error() == null) InvocationResultService.instance(project).success(resultId, decoded.json());
+        else {
+            IllegalStateException error = new IllegalStateException(decoded.error());
+            InvocationResultService.instance(project).failure(resultId, error); errors.accept(target.description(), error);
+        }
+    }
+
+    private static Exception unwrap(Throwable failure) {
+        Throwable value = failure instanceof java.util.concurrent.CompletionException && failure.getCause() != null ? failure.getCause() : failure;
+        return value instanceof Exception ? (Exception) value : new IllegalStateException(value);
     }
 
     private static CompletableFuture<Void> attach(Project project, Target target, JsonObject request,

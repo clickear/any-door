@@ -139,4 +139,14 @@ public class JsonUtil {
         }
         return toStrNotExc(value);
     }
+
+    /** Serializes every value as JSON, including strings and null. */
+    public static String toJson(Object value) {
+        try {
+            if (value instanceof Optional) value = ((Optional<?>) value).orElse(null);
+            return objectMapper.writeValueAsString(value);
+        } catch (Throwable error) {
+            throw new IllegalArgumentException("Unable to serialize invocation result: " + error.getMessage(), error);
+        }
+    }
 }

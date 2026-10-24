@@ -58,15 +58,19 @@ public class AnyDoorHandlerMethod extends HandlerMethod {
     /**
      * 并行，阻塞调度进程
      */
-    public void parallelInvokeSync(Runnable startRun, List<Map<String, Object>> contentMaps, int num, BiConsumer<Integer, Object> resultLogConsumer) {
+    public List<Object> parallelInvokeSync(Runnable startRun, List<Map<String, Object>> contentMaps, int num, BiConsumer<Integer, Object> resultLogConsumer) {
         Object[] curArgs = null;
+        List<Object> results = new ArrayList<>(num);
         for (int i = 0; i < num; i++) {
             if (contentMaps.size() > i) {
                 curArgs = getArgs(contentMaps.get(i));
             }
             final Object[] args = curArgs;
-            resultLogConsumer.accept(i, doInvoke(startRun, args));
+            Object result = doInvoke(startRun, args);
+            results.add(result);
+            resultLogConsumer.accept(i, result);
         }
+        return results;
     }
     
     /**

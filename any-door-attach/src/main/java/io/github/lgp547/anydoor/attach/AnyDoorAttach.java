@@ -37,7 +37,12 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.time.Instant;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.lang.reflect.InvocationTargetException;
+import java.util.concurrent.CompletableFuture;
 
 public class AnyDoorAttach {
     
@@ -70,7 +75,9 @@ public class AnyDoorAttach {
             return;
         }
         
-        try (AnyDoorClassloader anyDoorClassloader = new AnyDoorClassloader(anyDoorRunDto.getJarPaths())) {
+        AnyDoorClassloader anyDoorClassloader = null;
+        try {
+            anyDoorClassloader = new AnyDoorClassloader(anyDoorRunDto.getJarPaths());
             AnyDoorVmToolUtils.init();
             AnyDoorRuntimeResolver resolver = new AnyDoorRuntimeResolver(inst);
             if (anyDoorRunDto.isListBeans()) {
@@ -94,26 +101,81 @@ public class AnyDoorAttach {
             
             Class<?> anyDoorServiceClass = anyDoorClassloader.loadClass("io.github.lgp547.anydoor.core.AnyDoorService");
             Object anyDoorService = anyDoorServiceClass.getConstructor().newInstance();
-            Method run = anyDoorServiceClass.getMethod("run", String.class, Method.class, Object.class, Runnable.class, Runnable.class);
-            Runnable endRun = anyDoorClassloader::forceClose;
-            Object result = run.invoke(anyDoorService, anyDoorDtoStr, method, instance, startRun, endRun);
-            writeResult(anyDoorRunDto.getResultPath(), result, null);
-        } catch (Exception e) {
+            Method run = anyDoorServiceClass.getMethod("runForResult", String.class, Method.class, Object.class, Runnable.class, Runnable.class);
+            Runnable endRun = () -> { };
+            CompletableFuture<?> result = (CompletableFuture<?>) run.invoke(anyDoorService, anyDoorDtoStr, method, instance, startRun, endRun);
+            AnyDoorClassloader resultClassloader = anyDoorClassloader;
+            result.whenComplete((value, failure) -> {
+                try {
+                    if (failure != null) writeResult(anyDoorRunDto.getResultPath(), null, failure);
+                    else {
+                        Class<?> jsonUtil = resultClassloader.loadClass("io.github.lgp547.anydoor.util.JsonUtil");
+                        String resultJson = (String) jsonUtil.getMethod("toJson", Object.class).invoke(null, value);
+                        writeJsonResult(anyDoorRunDto.getResultPath(), resultJson);
+                    }
+                } catch (Throwable serializationError) {
+                    writeResult(anyDoorRunDto.getResultPath(), null, serializationError);
+                } finally { resultClassloader.forceClose(); }
+            });
+        } catch (Throwable e) {
+            if (anyDoorClassloader != null) anyDoorClassloader.forceClose();
             writeResult(anyDoorRunDto.getResultPath(), null, e);
             System.err.println("any_door agentmain error. anyDoorDtoStr[" + anyDoorDtoStr + "]");
             e.printStackTrace();
         }
     }
 
-    private static void writeResult(String resultPath, Object result, Exception error) {
+    private static void writeResult(String resultPath, Object result, Throwable error) {
         if (resultPath == null || resultPath.isEmpty()) return;
         try {
             String status = error == null ? "success" : "error";
-            String payload = error == null ? String.valueOf(result) : error.toString();
-            String escaped = payload.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r");
-            String json = "{\"status\":\"" + status + "\",\"time\":" + Instant.now().toEpochMilli() + ",\"result\":\"" + escaped + "\"}";
-            Files.write(Paths.get(resultPath), json.getBytes(StandardCharsets.UTF_8));
+            String payload = error == null ? String.valueOf(result) : errorDetails(error);
+            String json = "{\"status\":\"" + status + "\",\"time\":" + Instant.now().toEpochMilli() + ",\""
+                    + (error == null ? "result" : "error") + "\":\"" + escape(payload) + "\"}";
+            writeAtomically(resultPath, json);
         } catch (Exception ignored) { }
+    }
+
+    private static void writeJsonResult(String resultPath, String resultJson) {
+        if (resultPath == null || resultPath.isEmpty()) return;
+        try {
+            String json = "{\"status\":\"success\",\"time\":" + Instant.now().toEpochMilli() + ",\"resultJson\":" + resultJson + "}";
+            writeAtomically(resultPath, json);
+        } catch (Exception ignored) { }
+    }
+
+    private static void writeAtomically(String resultPath, String json) throws IOException {
+        java.nio.file.Path target = Paths.get(resultPath);
+        java.nio.file.Path temporary = Paths.get(resultPath + ".tmp");
+        Files.write(temporary, json.getBytes(StandardCharsets.UTF_8));
+        try { Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE); }
+        catch (java.nio.file.AtomicMoveNotSupportedException ignored) { Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING); }
+    }
+
+    private static String errorDetails(Throwable error) {
+        Throwable root = error;
+        while ((root instanceof InvocationTargetException || root.getClass().getName().contains("CompletionException")) && root.getCause() != null) root = root.getCause();
+        StringWriter output = new StringWriter();
+        root.printStackTrace(new PrintWriter(output));
+        String value = output.toString();
+        return value.length() > 40000 ? value.substring(0, 40000) + "\n… stack trace truncated" : value;
+    }
+
+    private static String escape(String value) {
+        StringBuilder result = new StringBuilder(value.length() + 32);
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            switch (c) {
+                case '\\': result.append("\\\\"); break;
+                case '"': result.append("\\\""); break;
+                case '\n': result.append("\\n"); break;
+                case '\r': result.append("\\r"); break;
+                case '\t': result.append("\\t"); break;
+                default:
+                    if (c < 0x20) result.append(String.format("\\u%04x", (int) c)); else result.append(c);
+            }
+        }
+        return result.toString();
     }
     
     private static Runnable getStartRunnable(Instrumentation inst, AnyDoorRunDto anyDoorRunDto) {
