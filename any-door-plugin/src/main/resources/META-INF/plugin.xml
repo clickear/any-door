@@ -25,6 +25,13 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <strong>2.9.0 调用诊断中心</strong>
+        <ul>
+            <li>从目标连接、Agent 协议、类加载器、Spring Bean、方法和参数逐阶段预检调用</li>
+            <li>调用失败时自动诊断，也可手动诊断最近调用，并提供检测证据与可执行建议</li>
+            <li>支持选择候选 ClassLoader 或 Bean 后重新诊断、复制及导出脱敏报告</li>
+            <li>Attach 与 HTTP 使用统一版本化协议，诊断过程不执行或实例化业务对象</li>
+        </ul>
         <strong>2.8.0 返回结果查看器</strong>
         <ul>
             <li>普通调用和 .anydoor 请求统一展示结构化返回结果、异常与耗时</li>

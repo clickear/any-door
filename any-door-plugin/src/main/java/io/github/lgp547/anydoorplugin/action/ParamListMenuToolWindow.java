@@ -9,6 +9,7 @@ import com.intellij.ui.content.ContentFactory;
 import io.github.lgp547.anydoorplugin.dialog.ParamLibraryPanel;
 import io.github.lgp547.anydoorplugin.request.AnyDoorRequestsPanel;
 import io.github.lgp547.anydoorplugin.result.InvocationResultsPanel;
+import io.github.lgp547.anydoorplugin.diagnostic.InvocationDiagnosticsPanel;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -36,6 +37,10 @@ public class ParamListMenuToolWindow implements ToolWindowFactory {
         Content resultContent = contentFactory.createContent(results, "Results", false);
         resultContent.setDisposer(results);
         toolWindow.getContentManager().addContent(resultContent);
+        InvocationDiagnosticsPanel diagnostics = new InvocationDiagnosticsPanel(project);
+        Content diagnosticContent = contentFactory.createContent(diagnostics, "Diagnostics", false);
+        diagnosticContent.setDisposer(diagnostics);
+        toolWindow.getContentManager().addContent(diagnosticContent);
         //初始化数据
 
         // 全局使用

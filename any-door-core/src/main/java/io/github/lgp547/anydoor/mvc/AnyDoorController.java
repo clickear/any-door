@@ -19,6 +19,8 @@ package io.github.lgp547.anydoor.mvc;
 
 import io.github.lgp547.anydoor.common.dto.AnyDoorRunDto;
 import io.github.lgp547.anydoor.core.AnyDoorService;
+import io.github.lgp547.anydoor.core.AnyDoorDiagnosticService;
+import io.github.lgp547.anydoor.common.dto.AnyDoorDiagnosticReport;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -42,6 +44,12 @@ public class AnyDoorController {
     @ResponseBody
     public CompletableFuture<Object> runResult(@RequestBody AnyDoorRunDto anyDoorDto) {
         return new AnyDoorService().runForResult(anyDoorDto);
+    }
+
+    @RequestMapping("/any_door/diagnose")
+    @ResponseBody
+    public AnyDoorDiagnosticReport diagnose(@RequestBody AnyDoorRunDto anyDoorDto) {
+        return new AnyDoorDiagnosticService().diagnose(anyDoorDto);
     }
     
 }

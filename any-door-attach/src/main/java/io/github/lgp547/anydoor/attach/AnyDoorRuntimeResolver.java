@@ -22,19 +22,37 @@ public final class AnyDoorRuntimeResolver {
     private final Class<?>[] loaded;
     private final Object[] contexts;
     private final Object[] factories;
+    private final String initializationWarning;
 
     public AnyDoorRuntimeResolver(Instrumentation instrumentation) {
+        this(instrumentation, false);
+    }
+
+    public AnyDoorRuntimeResolver(Instrumentation instrumentation, boolean tolerant) {
         this.loaded = instrumentation.getAllLoadedClasses();
-        this.contexts = filterContexts(instances(CONTEXT));
+        Object[] discoveredContexts = instances(CONTEXT);
+        Object[] selectedContexts;
+        String warning = null;
+        try { selectedContexts = filterContexts(discoveredContexts); }
+        catch (Throwable error) {
+            if (!tolerant) throw error instanceof RuntimeException ? (RuntimeException) error : new IllegalStateException(error);
+            selectedContexts = discoveredContexts;
+            warning = error.getClass().getName() + ": " + error.getMessage();
+        }
+        this.contexts = selectedContexts;
         String contextName = System.getProperty("anydoor.spring.core.context.name");
         this.factories = contextName == null || contextName.isEmpty() ? instances(FACTORY) : new Object[0];
+        this.initializationWarning = warning;
     }
 
     AnyDoorRuntimeResolver(Class<?>[] loaded, Object[] contexts, Object[] factories) {
         this.loaded = loaded;
         this.contexts = filterContexts(contexts);
         this.factories = factories;
+        this.initializationWarning = null;
     }
+
+    public String getInitializationWarning() { return initializationWarning; }
 
     private Object[] instances(String name) {
         Set<Object> result = Collections.newSetFromMap(new IdentityHashMap<Object, Boolean>());
@@ -74,7 +92,7 @@ public final class AnyDoorRuntimeResolver {
         return new Target(type, AnyDoorVmToolUtils.getOrGenInstance(type));
     }
 
-    List<Class<?>> findTypes(String name, String loaderId) {
+    public List<Class<?>> findTypes(String name, String loaderId) {
         Set<Class<?>> types = new LinkedHashSet<>();
         Set<ClassLoader> applicationLoaders = Collections.newSetFromMap(new IdentityHashMap<ClassLoader, Boolean>());
         for (Class<?> type : loaded) {

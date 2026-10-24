@@ -66,6 +66,9 @@ public class AnyDoorRunDto {
     private String classLoaderId;
     /** "listBeans" performs discovery only; absent means invoke the method. */
     private String operation;
+    private String diagnosticClientVersion;
+    private String diagnosticMethodName;
+    private List<String> diagnosticParameterTypes;
 
     public String getBeanName() { return beanName; }
     public void setBeanName(String beanName) { this.beanName = beanName; }
@@ -76,6 +79,13 @@ public class AnyDoorRunDto {
     public String getOperation() { return operation; }
     public void setOperation(String operation) { this.operation = operation; }
     public boolean isListBeans() { return "listBeans".equals(operation); }
+    public boolean isDiagnose() { return "diagnose".equals(operation); }
+    public String getDiagnosticClientVersion() { return diagnosticClientVersion; }
+    public void setDiagnosticClientVersion(String diagnosticClientVersion) { this.diagnosticClientVersion = diagnosticClientVersion; }
+    public String getDiagnosticMethodName() { return diagnosticMethodName; }
+    public void setDiagnosticMethodName(String diagnosticMethodName) { this.diagnosticMethodName = diagnosticMethodName; }
+    public List<String> getDiagnosticParameterTypes() { return diagnosticParameterTypes; }
+    public void setDiagnosticParameterTypes(List<String> diagnosticParameterTypes) { this.diagnosticParameterTypes = diagnosticParameterTypes; }
     
     public String getClassName() {
         return className;
@@ -171,11 +181,11 @@ public class AnyDoorRunDto {
     
     public void verify() {
         Assert.notNull(className, "className is required");
-        if (!isListBeans()) Assert.notNull(methodName, "methodName is required");
+        if (!isListBeans() && !isDiagnose()) Assert.notNull(methodName, "methodName is required");
     }
     
     public boolean verifyPassByAttach() {
-        return className != null && (isListBeans() || methodName != null) && jarPaths != null;
+        return className != null && (isListBeans() || isDiagnose() || methodName != null) && jarPaths != null;
     }
     
     @Override
@@ -220,6 +230,9 @@ public class AnyDoorRunDto {
         anyDoorRunDto.setBeanContextId(readJsonString(anyDoorDtoStr, "beanContextId"));
         anyDoorRunDto.setClassLoaderId(readJsonString(anyDoorDtoStr, "classLoaderId"));
         anyDoorRunDto.setOperation(substringBetween(anyDoorDtoStr, "\"operation\":\"", "\""));
+        anyDoorRunDto.setDiagnosticClientVersion(readJsonString(anyDoorDtoStr, "diagnosticClientVersion"));
+        anyDoorRunDto.setDiagnosticMethodName(readJsonString(anyDoorDtoStr, "diagnosticMethodName"));
+        anyDoorRunDto.setDiagnosticParameterTypes(parseList(anyDoorDtoStr, "diagnosticParameterTypes"));
         return anyDoorRunDto;
     }
 

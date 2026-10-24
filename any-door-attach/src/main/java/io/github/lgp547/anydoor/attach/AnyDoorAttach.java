@@ -79,7 +79,28 @@ public class AnyDoorAttach {
         try {
             anyDoorClassloader = new AnyDoorClassloader(anyDoorRunDto.getJarPaths());
             AnyDoorVmToolUtils.init();
-            AnyDoorRuntimeResolver resolver = new AnyDoorRuntimeResolver(inst);
+            AnyDoorRuntimeResolver resolver = new AnyDoorRuntimeResolver(inst, anyDoorRunDto.isDiagnose());
+            if (anyDoorRunDto.isDiagnose()) {
+                try {
+                    java.util.List<Class<?>> types = new java.util.ArrayList<>();
+                    java.util.List<java.util.Map<String, String>> beans = new java.util.ArrayList<>();
+                    String classFailure = null;
+                    String springFailure = resolver.getInitializationWarning();
+                    try { types = resolver.findTypes(anyDoorRunDto.getClassName(), anyDoorRunDto.getClassLoaderId()); }
+                    catch (Throwable error) { classFailure = error.getClass().getName() + ": " + error.getMessage(); }
+                    try { if (!types.isEmpty()) beans = resolver.listBeans(anyDoorRunDto); }
+                    catch (Throwable error) { springFailure = error.getClass().getName() + ": " + error.getMessage(); }
+                    Class<?> diagnosticType = anyDoorClassloader.loadClass("io.github.lgp547.anydoor.core.AnyDoorDiagnosticService");
+                    Object diagnostic = diagnosticType.getConstructor().newInstance();
+                    Object report = diagnosticType.getMethod("diagnose", String.class, java.util.List.class, java.util.List.class, String.class, String.class, String.class)
+                            .invoke(diagnostic, anyDoorDtoStr, types, beans, "PID " + java.lang.management.ManagementFactory.getRuntimeMXBean().getName().split("@")[0], classFailure, springFailure);
+                    Class<?> jsonUtil = anyDoorClassloader.loadClass("io.github.lgp547.anydoor.util.JsonUtil");
+                    String json = (String) jsonUtil.getMethod("toJson", Object.class).invoke(null, report);
+                    writeJsonResult(anyDoorRunDto.getResultPath(), json);
+                } catch (Throwable error) { writeResult(anyDoorRunDto.getResultPath(), null, error); }
+                finally { anyDoorClassloader.forceClose(); }
+                return;
+            }
             if (anyDoorRunDto.isListBeans()) {
                 try {
                     // Serialize across the isolated core classloader using only JDK collections.

@@ -17,8 +17,12 @@ public class HttpUtil {
     }
 
     public static CompletableFuture<String> postAsync(String urlStr, String reqBody) {
+        return postAsync(urlStr, reqBody, 0);
+    }
+
+    public static CompletableFuture<String> postAsync(String urlStr, String reqBody, int readTimeoutMillis) {
         return CompletableFuture.supplyAsync(() -> {
-            try { return postByJdk(urlStr, reqBody, 0); }
+            try { return postByJdk(urlStr, reqBody, readTimeoutMillis); }
             catch (Exception e) { throw new java.util.concurrent.CompletionException(e); }
         });
     }

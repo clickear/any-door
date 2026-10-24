@@ -12,6 +12,7 @@ import io.github.lgp547.anydoorplugin.result.InvocationResultService;
 import io.github.lgp547.anydoorplugin.util.HttpUtil;
 import io.github.lgp547.anydoorplugin.util.ImportNewUtil;
 import io.github.lgp547.anydoorplugin.util.VmUtil;
+import io.github.lgp547.anydoorplugin.diagnostic.InvocationDiagnosticService;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -36,12 +37,18 @@ public final class BeanSelectionService {
         Target target = new Target(settings.isSelectJavaAttach(), String.valueOf(settings.pid),
                 settings.mvcAddress + ":" + settings.mvcPort + settings.mvcWebPathPrefix + "/any_door/run");
         JsonObject request = JsonParser.parseString(dto).getAsJsonObject();
+        InvocationDiagnosticService diagnostics = InvocationDiagnosticService.instance(project);
+        diagnostics.remember(request, settings);
+        BiConsumer<String, Exception> reportedErrors = (destination, error) -> {
+            errors.accept(destination, error);
+            diagnostics.diagnoseFailure(request, settings, error);
+        };
         if (request.has("beanContextId") && !request.has("beanName")) {
-            errors.accept(target.description(), new IllegalArgumentException("指定 beanContextId 时必须同时指定 beanName"));
+            reportedErrors.accept(target.description(), new IllegalArgumentException("指定 beanContextId 时必须同时指定 beanName"));
             return;
         }
         if (request.has("beanName") && !request.get("beanName").getAsString().isBlank()) {
-            send(project, target, request, errors, onDispatch);
+            send(project, target, request, reportedErrors, onDispatch);
             return;
         }
         JsonObject query = request.deepCopy();
@@ -53,7 +60,7 @@ public final class BeanSelectionService {
         query.remove("beanContextId");
         discover(project, target, query).whenComplete((candidates, failure) -> {
             if (failure != null) {
-                errors.accept(target.description(), new IllegalStateException("查询 Spring Bean 失败：" + failure.getMessage(), failure));
+                reportedErrors.accept(target.description(), new IllegalStateException("查询 Spring Bean 失败：" + failure.getMessage(), failure));
                 return;
             }
             ApplicationManager.getApplication().invokeLater(() -> {
@@ -70,7 +77,7 @@ public final class BeanSelectionService {
                     request.addProperty("beanContextId", selected.get("beanContextId").getAsString());
                     if (selected.has("classLoaderId")) request.addProperty("classLoaderId", selected.get("classLoaderId").getAsString());
                 }
-                send(project, target, request, errors, onDispatch);
+                send(project, target, request, reportedErrors, onDispatch);
             });
         });
     }
