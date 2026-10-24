@@ -3,7 +3,7 @@
     <id>io.github.lgp547.any-door-plugin</id>
     <name>AnyDoor</name>
     <vendor email="lgp547279@163.com" url="https://github.com/lgp547">lgp</vendor>
-    <idea-version since-build="240.*"/>
+    <idea-version since-build="243"/>
     <description><![CDATA[
         Any method to execute a Java project,Either the 'App' layer or the 'Dao' layer can execution directly.<br>
         Getting Started:<br>
@@ -25,6 +25,12 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <strong>2.7.1 上游改进整合</strong>
+        <ul>
+            <li>Agent 依赖包在构建时生成，改善 Run/Debug 启动卡顿</li>
+            <li>调用回调使用不可变元数据快照，修复 PSI 读访问异常</li>
+            <li>修复参数模板生成、静态字段过滤及调试表达式编辑器的数据访问</li>
+        </ul>
         <strong>2.7.0 Spring Bean 精确选择</strong>
         <ul>
             <li>多个 Spring Bean 按名称、所属容器和代理类型选择调用实例</li>

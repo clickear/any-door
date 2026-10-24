@@ -165,24 +165,23 @@ public class MethodDataContext implements Multicaster, Listener {
 
     @Nullable
     public PsiMethod getMethod() {
-        String simpleMethodName = IdeClassUtil.getSimpleMethodName(qualifiedMethodName);
-        if (Objects.nonNull(classDataContext.clazz)) {
-            PsiMethod[] methods = classDataContext.clazz.findMethodsByName(simpleMethodName, false);
-            for (PsiMethod method : methods) {
-                if (Objects.equals(qualifiedMethodName, IdeClassUtil.getMethodQualifiedName(method))) {
-                    return method;
+        return ReadAction.compute(() -> {
+            String simpleMethodName = IdeClassUtil.getSimpleMethodName(qualifiedMethodName);
+            if (Objects.nonNull(classDataContext.clazz)) {
+                PsiMethod[] methods = classDataContext.clazz.findMethodsByName(simpleMethodName, false);
+                for (PsiMethod method : methods) {
+                    if (Objects.equals(qualifiedMethodName, IdeClassUtil.getMethodQualifiedName(method))) return method;
                 }
             }
-        }
-        return null;
+            return null;
+        });
     }
 
     public PsiParameterList getParamList() {
-        PsiMethod method = getMethod();
-        if (Objects.isNull(method)) {
-            return new PsiParameterListImpl(new PsiParameterListStubImpl(null));
-        }
-        return method.getParameterList();
+        return ReadAction.compute(() -> {
+            PsiMethod method = getMethod();
+            return method == null ? new PsiParameterListImpl(new PsiParameterListStubImpl(null)) : method.getParameterList();
+        });
     }
 
     @Override
@@ -213,21 +212,9 @@ public class MethodDataContext implements Multicaster, Listener {
             updateItemName(dataItem);
             flush();
         } else if (Objects.equals(event.getType(), EventType.ADD_SIMPLE_PARAM_ITEM)) {
-            findItem(null)
-                    .ifPresentOrElse(
-                            item -> {
-                                item.setParam(generateSimpleParamJson());
-                                selectItem(item);
-                            },
-                            this::resetEmptyItem);
+            resetSimpleParamItem();
         } else if (Objects.equals(event.getType(), EventType.ADD_ALL_PARAM_ITEM)) {
-            findItem(null)
-                    .ifPresentOrElse(
-                            item -> {
-                                item.setParam(generateAllParamJson());
-                                selectItem(item);
-                            },
-                            this::resetEmptyItemFillParam);
+            resetAllParamItem();
         } else if (Objects.equals(event.getType(), EventType.ADD_CACHE_PARAM_ITEM)) {
             resetLastCacheParam();
         }
@@ -240,12 +227,20 @@ public class MethodDataContext implements Multicaster, Listener {
     }
 
     private void resetEmptyItemFillParam() {
-        resetEmptyItem();
-        freeItem.setParam(generateAllParamJson());
+        resetAllParamItem();
     }
 
     private void resetEmptyItem() {
+        resetAllParamItem();
+    }
+
+    private void resetSimpleParamItem() {
         freeItem = new ParamDataItem("", qualifiedMethodName, generateSimpleParamJson());
+        selectItem(freeItem);
+    }
+
+    private void resetAllParamItem() {
+        freeItem = new ParamDataItem("", qualifiedMethodName, generateAllParamJson());
         selectItem(freeItem);
     }
 

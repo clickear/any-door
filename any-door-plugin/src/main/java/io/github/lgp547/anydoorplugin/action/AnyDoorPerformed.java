@@ -5,11 +5,11 @@ import com.google.gson.JsonParser;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiMethod;
+import com.intellij.openapi.application.ReadAction;
 import io.github.lgp547.anydoorplugin.AnyDoorInfo;
 import io.github.lgp547.anydoorplugin.dialog.DataContext;
 import io.github.lgp547.anydoorplugin.dialog.MainUI;
 import io.github.lgp547.anydoorplugin.dialog.old.TextAreaDialog;
-import io.github.lgp547.anydoorplugin.dialog.utils.IdeClassUtil;
 import io.github.lgp547.anydoorplugin.dto.ParamCacheDto;
 import io.github.lgp547.anydoorplugin.settings.AnyDoorSettingsState;
 import io.github.lgp547.anydoorplugin.util.AnyDoorActionUtil;
@@ -29,10 +29,7 @@ import java.util.function.BiConsumer;
 public class AnyDoorPerformed {
 
     public void invoke(Project project, PsiMethod psiMethod, Runnable okAction) {
-        PsiClass psiClass = (PsiClass) psiMethod.getParent();
-        String className = psiClass.getQualifiedName();
-        String methodName = psiMethod.getName();
-        List<String> paramTypeNameList = AnyDoorActionUtil.toParamTypeNameList(psiMethod.getParameterList());
+        MethodInvocationSnapshot method = MethodInvocationSnapshot.capture(psiMethod);
 
 
         Optional<AnyDoorSettingsState> anyDoorSettingsStateOpt = AnyDoorSettingsState.getAnyDoorSettingsStateNotExc(project);
@@ -44,16 +41,17 @@ public class AnyDoorPerformed {
         BiConsumer<String, Exception> openExcConsumer = (url, e) -> NotifierUtil.notifyError(project, "call " + url + " error [ " + e.getMessage() + " ]");
 
 
-        if (paramTypeNameList.isEmpty()) {
-            String jsonDtoStr = getJsonDtoStr(project, className, methodName, paramTypeNameList, "{}", !service.enableAsyncExecute, null);
+        if (method.parameterTypeNames().isEmpty()) {
+            String jsonDtoStr = getJsonDtoStr(project, method.className(), method.methodName(), method.parameterTypeNames(), "{}", !service.enableAsyncExecute, null);
             openAnyDoor(project, jsonDtoStr, service, openExcConsumer);
             okAction.run();
         } else {
-            String cacheKey = AnyDoorActionUtil.genCacheKey(psiClass, psiMethod);
-            if (useNewUI(service, project, psiClass, psiMethod, cacheKey, okAction)) {
+            String cacheKey = AnyDoorActionUtil.genCacheKey(method.className(), method.methodName(), method.parameterTypeNames());
+            if (service.enableNewUI) {
+                doUseNewUI(service, project, method, cacheKey, okAction, null);
                 return;
             }
-            TextAreaDialog dialog = new TextAreaDialog(project, String.format("fill method(%s) param", methodName), psiMethod.getParameterList(), service.getCache(cacheKey), service);
+            TextAreaDialog dialog = new TextAreaDialog(project, String.format("fill method(%s) param", method.methodName()), ReadAction.compute(psiMethod::getParameterList), service.getCache(cacheKey), service);
             dialog.setOkAction(() -> {
                 okAction.run();
                 if (dialog.isChangePid()) {
@@ -62,9 +60,9 @@ public class AnyDoorPerformed {
                 String text = dialog.getText();
                 ParamCacheDto paramCacheDto = new ParamCacheDto(dialog.getRunNum(), dialog.getIsConcurrent(), text);
                 service.putCache(cacheKey, paramCacheDto);
-                text = AnyDoorActionUtil.prepareInvocationContent(psiClass, psiMethod, text);
+                text = method.prepareContent(text);
                 text = JsonUtil.compressJson(text);
-                String jsonDtoStr = getJsonDtoStr(project, className, methodName, paramTypeNameList, text, !service.enableAsyncExecute, paramCacheDto);
+                String jsonDtoStr = getJsonDtoStr(project, method.className(), method.methodName(), method.parameterTypeNames(), text, !service.enableAsyncExecute, paramCacheDto);
                 openAnyDoor(project, jsonDtoStr, service, openExcConsumer);
             });
             dialog.show();
@@ -80,13 +78,17 @@ public class AnyDoorPerformed {
     }
 
     public void doUseNewUI(AnyDoorSettingsState service, Project project, PsiClass psiClass, PsiMethod psiMethod, String cacheKey, Runnable okAction, @Nullable Long selectedId) {
+        doUseNewUI(service, project, MethodInvocationSnapshot.capture(psiClass, psiMethod), cacheKey, okAction, selectedId);
+    }
+
+    private void doUseNewUI(AnyDoorSettingsState service, Project project, MethodInvocationSnapshot method, String cacheKey, Runnable okAction, @Nullable Long selectedId) {
         ParamCacheDto cache = service.getCache(cacheKey);
         DataContext instance = DataContext.instance(project);
-        MainUI mainUI = new MainUI(psiMethod.getName(), project);
+        MainUI mainUI = new MainUI(method.methodName(), project);
 
         instance.getExecuteDataContextAsync(
-                psiClass.getQualifiedName(),
-                IdeClassUtil.getMethodQualifiedName(psiMethod),
+                method.className(),
+                method.qualifiedMethodName(),
                 selectedId,
                 cache.content(),
                 mainUI::bindContext
@@ -101,8 +103,8 @@ public class AnyDoorPerformed {
             ParamCacheDto paramCacheDto = new ParamCacheDto(mainUI.getRunNum(), mainUI.getIsConcurrent(), text);
             service.putCache(cacheKey, paramCacheDto);
 
-            text = AnyDoorActionUtil.prepareInvocationContent(psiClass, psiMethod, text);
-            String jsonDtoStr = getJsonDtoStr(project, psiClass.getQualifiedName(), psiMethod.getName(), AnyDoorActionUtil.toParamTypeNameList(psiMethod.getParameterList()), text, !service.enableAsyncExecute, paramCacheDto);
+            text = method.prepareContent(text);
+            String jsonDtoStr = getJsonDtoStr(project, method.className(), method.methodName(), method.parameterTypeNames(), text, !service.enableAsyncExecute, paramCacheDto);
             openAnyDoor(project, jsonDtoStr, service, (url, e) -> NotifierUtil.notifyError(project, "call " + url + " error [ " + e.getMessage() + " ]"));
         });
         mainUI.show();
@@ -134,12 +136,13 @@ public class AnyDoorPerformed {
                                      @Nullable String resultPath, @Nullable String beanName, @Nullable String beanContextId,
                                      @Nullable String classLoaderId, BiConsumer<String, Exception> errHandle, Runnable onDispatch) {
         AnyDoorSettingsState service = project.getService(AnyDoorSettingsState.class);
+        MethodInvocationSnapshot method = MethodInvocationSnapshot.capture(psiClass, psiMethod);
         if (pid != null) service.pid = pid;
         String body = JsonUtil.compressJson(content);
-        body = AnyDoorActionUtil.prepareInvocationContent(psiClass, psiMethod, body);
+        body = method.prepareContent(body);
         // A request file is interactive: synchronous mode is required to obtain a deterministic result.
-        JsonObject dto = JsonParser.parseString(getJsonDtoStr(project, psiClass.getQualifiedName(), psiMethod.getName(),
-                AnyDoorActionUtil.toParamTypeNameList(psiMethod.getParameterList()), body, true, null)).getAsJsonObject();
+        JsonObject dto = JsonParser.parseString(getJsonDtoStr(project, method.className(), method.methodName(),
+                method.parameterTypeNames(), body, true, null)).getAsJsonObject();
         if (resultPath != null) dto.addProperty("resultPath", resultPath);
         if (beanName != null && !beanName.isBlank()) dto.addProperty("beanName", beanName);
         if (beanContextId != null && !beanContextId.isBlank()) dto.addProperty("beanContextId", beanContextId);
@@ -148,7 +151,7 @@ public class AnyDoorPerformed {
     }
 
     @NotNull
-    private static String getJsonDtoStr(Project project, String className, String methodName, List<String> paramTypeNameList, String content, boolean isSync, @Nullable ParamCacheDto paramCacheDto) {
+    static String getJsonDtoStr(Project project, String className, String methodName, List<String> paramTypeNameList, String content, boolean isSync, @Nullable ParamCacheDto paramCacheDto) {
         JsonObject jsonObjectReq = new JsonObject();
         jsonObjectReq.addProperty("content", content);
         jsonObjectReq.addProperty("methodName", methodName);
@@ -161,7 +164,7 @@ public class AnyDoorPerformed {
         jsonObjectReq.add("parameterTypes", JsonUtil.toJsonArray(paramTypeNameList));
 
         String anyDoorJarPath = ImportNewUtil.getPluginLibPath(AnyDoorInfo.ANY_DOOR_JAR);
-        String dependenceJarFilePath = ImportNewUtil.getPluginLibPath(AnyDoorInfo.ANY_DOOR_ALL_DEPENDENCE_JAR);
+        String dependenceJarFilePath = ImportNewUtil.getPluginAgentPath(AnyDoorInfo.ANY_DOOR_ALL_DEPENDENCE_JAR);
         String anyDoorCommonJarPath = ImportNewUtil.getPluginLibPath(AnyDoorInfo.ANY_DOOR_COMMON_JAR);
         jsonObjectReq.add("jarPaths", JsonUtil.toJsonArray(List.of(anyDoorJarPath, dependenceJarFilePath, anyDoorCommonJarPath)));
         jsonObjectReq.addProperty("projectBasePath", project.getBasePath());
