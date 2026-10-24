@@ -25,6 +25,13 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <strong>2.7.0 Spring Bean 精确选择</strong>
+        <ul>
+            <li>多个 Spring Bean 按名称、所属容器和代理类型选择调用实例</li>
+            <li>支持抽象父类方法和子类重写方法的精确调用</li>
+            <li>修复 Spring Boot 可执行 JAR、父子加载器和同名类隔离场景</li>
+            <li>请求文件支持指定 Bean、容器和类加载器</li>
+        </ul>
         <strong>2.3.0 参数库版本</strong>
         <ul>
             <li>[feat]参数库升级为类、方法、参数方案三级树形展示</li>
