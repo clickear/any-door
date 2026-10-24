@@ -24,11 +24,13 @@ import io.github.lgp547.anydoor.common.util.AnyDoorBeanUtil;
 import io.github.lgp547.anydoor.common.util.AnyDoorFileUtil;
 import io.github.lgp547.anydoor.common.util.AnyDoorSpringUtil;
 import org.springframework.beans.factory.BeanFactory;
-import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.context.ApplicationContext;
 
 import java.io.File;
 import java.security.CodeSource;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 
 public class AnyDoorVmToolUtils {
     
@@ -94,13 +96,27 @@ public class AnyDoorVmToolUtils {
      * 优先通过spring 上下文获取
      */
     public static Object getInstance(Class<?> clazz) {
+        return getInstance(clazz, null, null);
+    }
+
+    public static List<Map<String, String>> listBeans(Class<?> clazz) {
         try {
-            // 这里用的是被调用项目的ApplicationContext
-            AnyDoorSpringUtil.initApplicationContexts(() -> AnyDoorVmToolUtils.getInstances(ApplicationContext.class), () -> AnyDoorVmToolUtils.getInstances(BeanFactory.class));
-            if (AnyDoorSpringUtil.containsBean(clazz)) {
-                return AnyDoorSpringUtil.getBean(clazz);
+            initSpringContexts();
+            return AnyDoorSpringUtil.listBeans(clazz);
+        } catch (NoClassDefFoundError noSpring) {
+            return Collections.emptyList();
+        }
+    }
+
+    public static Object getInstance(Class<?> clazz, String beanName, String contextId) {
+        try {
+            initSpringContexts();
+            Object bean = AnyDoorSpringUtil.resolveBean(clazz, beanName, contextId);
+            if (bean != null) return bean;
+        } catch (NoClassDefFoundError noSpring) {
+            if (beanName != null && !beanName.isEmpty()) {
+                throw new IllegalArgumentException("Spring is unavailable; cannot select bean " + beanName, noSpring);
             }
-        } catch (Throwable ignored) {
         }
         Object[] instances = AnyDoorVmToolUtils.getInstances(clazz);
         if (instances.length == 0) {
@@ -108,5 +124,10 @@ public class AnyDoorVmToolUtils {
         } else {
             return instances[0];
         }
+    }
+
+    private static void initSpringContexts() {
+        AnyDoorSpringUtil.initApplicationContexts(() -> AnyDoorVmToolUtils.getInstances(ApplicationContext.class),
+                () -> AnyDoorVmToolUtils.getInstances(BeanFactory.class));
     }
 }

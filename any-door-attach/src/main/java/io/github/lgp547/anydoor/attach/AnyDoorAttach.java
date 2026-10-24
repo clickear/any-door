@@ -70,14 +70,27 @@ public class AnyDoorAttach {
             return;
         }
         
-        Runnable startRun = getStartRunnable(inst, anyDoorRunDto);
-        
-        AnyDoorVmToolUtils.init();
-        
         try (AnyDoorClassloader anyDoorClassloader = new AnyDoorClassloader(anyDoorRunDto.getJarPaths())) {
-            Class<?> clazz = AnyDoorClassUtil.forName(anyDoorRunDto.getClassName());
+            AnyDoorVmToolUtils.init();
+            AnyDoorRuntimeResolver resolver = new AnyDoorRuntimeResolver(inst);
+            if (anyDoorRunDto.isListBeans()) {
+                try {
+                    // Serialize across the isolated core classloader using only JDK collections.
+                    Object candidates = resolver.listBeans(anyDoorRunDto);
+                    Class<?> jsonUtil = anyDoorClassloader.loadClass("io.github.lgp547.anydoor.util.JsonUtil");
+                    Object json = jsonUtil.getMethod("toStrNotExc", Object.class).invoke(null, candidates);
+                    writeResult(anyDoorRunDto.getResultPath(), json, null);
+                } finally {
+                    anyDoorClassloader.forceClose();
+                }
+                return;
+            }
+            Runnable startRun = getStartRunnable(inst, anyDoorRunDto);
+            AnyDoorRuntimeResolver.Target target = resolver.resolve(anyDoorRunDto);
+            Class<?> clazz = target.type;
             Method method = AnyDoorClassUtil.getMethod(clazz, anyDoorRunDto.getMethodName(), anyDoorRunDto.getParameterTypes());
-            Object instance = AnyDoorVmToolUtils.getInstance(clazz, !Modifier.isPublic(method.getModifiers()));
+            Object instance = target.bean;
+            if (!Modifier.isPublic(method.getModifiers())) instance = io.github.lgp547.anydoor.common.util.AnyDoorAopUtil.getTargetObject(instance);
             
             Class<?> anyDoorServiceClass = anyDoorClassloader.loadClass("io.github.lgp547.anydoor.core.AnyDoorService");
             Object anyDoorService = anyDoorServiceClass.getConstructor().newInstance();

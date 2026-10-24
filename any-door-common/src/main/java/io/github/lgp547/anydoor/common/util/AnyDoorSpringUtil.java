@@ -30,6 +30,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -169,6 +170,25 @@ public class AnyDoorSpringUtil {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    public static List<Map<String, String>> listBeans(Class<?> type) {
+        return AnyDoorBeanResolver.list(type, currentContexts(), currentFactories());
+    }
+
+    public static Object resolveBean(Class<?> type, String beanName, String contextId) {
+        return AnyDoorBeanResolver.resolve(type, beanName, contextId, currentContexts(), currentFactories());
+    }
+
+    private static ApplicationContext[] currentContexts() {
+        return applicationContextsSupplier == null ? new ApplicationContext[0]
+                : updateApplicationContextList().toArray(new ApplicationContext[0]);
+    }
+
+    private static BeanFactory[] currentFactories() {
+        // An explicitly configured context must not be widened by native factory discovery.
+        if (StringUtils.hasLength(System.getProperty("anydoor.spring.core.context.name"))) return new BeanFactory[0];
+        return beanFactorySupplier == null ? new BeanFactory[0] : beanFactorySupplier.get();
     }
     
 }

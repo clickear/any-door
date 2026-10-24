@@ -47,10 +47,10 @@ public final class AnyDoorRequestRunner {
         String content = resolveVariables(project, request.json(), request.variables());
         File resultFile = new File(project.getBasePath(), ".idea/any-door/results/" + UUID.randomUUID() + ".json");
         resultFile.getParentFile().mkdirs();
-        AnyDoorPerformed.executeDirect(project, type, methods[0], content, request.pid(), resultFile.getAbsolutePath(), (target, error) ->
-                RequestHistoryService.instance(project).add(request.name(), target, "失败：" + error.getMessage()));
-        waitForResult(project, request, resultFile);
-        return "已发送";
+        AnyDoorPerformed.executeDirect(project, type, methods[0], content, request.pid(), resultFile.getAbsolutePath(), request.beanName(), request.beanContextId(), request.classLoaderId(), (target, error) ->
+                RequestHistoryService.instance(project).add(request.name(), target, "失败：" + error.getMessage()),
+                () -> waitForResult(project, request, resultFile));
+        return "正在选择 Bean 或发送调用";
     }
     private static boolean isDestructive(AnyDoorRequest request) { return request.methodName().toLowerCase().matches(".*(delete|remove|update|save|create|send|publish|cancel).*" ); }
     private static String toText(AnyDoorRequest request) { return "### @name " + request.name() + "\n" + request.variables().entrySet().stream().map(e -> "@" + e.getKey() + " = " + e.getValue()).collect(java.util.stream.Collectors.joining("\n")) + "\nRUN " + request.className() + "#" + request.methodName() + "\n" + request.json(); }

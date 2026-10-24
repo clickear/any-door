@@ -20,8 +20,8 @@ public class VmUtil {
     /**
      * -XX:+DisableAttachMechanism
      */
-    public static void attachAsync(String pid, String jarFilePath, String param, String paramPath, BiConsumer<String, Exception> errHandle) {
-        CompletableFuture.runAsync(() -> {
+    public static CompletableFuture<Void> attachAsync(String pid, String jarFilePath, String param, String paramPath, BiConsumer<String, Exception> errHandle) {
+        return CompletableFuture.runAsync(() -> {
             // Exceed attach limit, go file transfer. file://paramPath
             String agentParam = param;
             if (agentParam.length() > 600 && flushFile(paramPath, agentParam)) {

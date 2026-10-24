@@ -1,6 +1,7 @@
 package io.github.lgp547.anydoorplugin.action;
 
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiClass;
 import com.intellij.psi.PsiMethod;
@@ -12,11 +13,9 @@ import io.github.lgp547.anydoorplugin.dialog.utils.IdeClassUtil;
 import io.github.lgp547.anydoorplugin.dto.ParamCacheDto;
 import io.github.lgp547.anydoorplugin.settings.AnyDoorSettingsState;
 import io.github.lgp547.anydoorplugin.util.AnyDoorActionUtil;
-import io.github.lgp547.anydoorplugin.util.HttpUtil;
 import io.github.lgp547.anydoorplugin.util.ImportNewUtil;
 import io.github.lgp547.anydoorplugin.util.JsonUtil;
 import io.github.lgp547.anydoorplugin.util.NotifierUtil;
-import io.github.lgp547.anydoorplugin.util.VmUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -63,10 +62,7 @@ public class AnyDoorPerformed {
                 String text = dialog.getText();
                 ParamCacheDto paramCacheDto = new ParamCacheDto(dialog.getRunNum(), dialog.getIsConcurrent(), text);
                 service.putCache(cacheKey, paramCacheDto);
-                // Change to args for the interface type
-                if (psiClass.isInterface()) {
-                    text = JsonUtil.transformedKey(text, AnyDoorActionUtil.getParamTypeNameTransformer(psiMethod.getParameterList()));
-                }
+                text = AnyDoorActionUtil.prepareInvocationContent(psiClass, psiMethod, text);
                 text = JsonUtil.compressJson(text);
                 String jsonDtoStr = getJsonDtoStr(project, className, methodName, paramTypeNameList, text, !service.enableAsyncExecute, paramCacheDto);
                 openAnyDoor(project, jsonDtoStr, service, openExcConsumer);
@@ -105,9 +101,7 @@ public class AnyDoorPerformed {
             ParamCacheDto paramCacheDto = new ParamCacheDto(mainUI.getRunNum(), mainUI.getIsConcurrent(), text);
             service.putCache(cacheKey, paramCacheDto);
 
-            if (psiClass.isInterface()) {
-                text = JsonUtil.transformedKey(text, AnyDoorActionUtil.getParamTypeNameTransformer(psiMethod.getParameterList()));
-            }
+            text = AnyDoorActionUtil.prepareInvocationContent(psiClass, psiMethod, text);
             String jsonDtoStr = getJsonDtoStr(project, psiClass.getQualifiedName(), psiMethod.getName(), AnyDoorActionUtil.toParamTypeNameList(psiMethod.getParameterList()), text, !service.enableAsyncExecute, paramCacheDto);
             openAnyDoor(project, jsonDtoStr, service, (url, e) -> NotifierUtil.notifyError(project, "call " + url + " error [ " + e.getMessage() + " ]"));
         });
@@ -115,29 +109,42 @@ public class AnyDoorPerformed {
     }
 
     private static void openAnyDoor(Project project, String jsonDtoStr, AnyDoorSettingsState service, BiConsumer<String, Exception> errHandle) {
-        if (service.isSelectJavaAttach()) {
-            String anyDoorJarPath = ImportNewUtil.getPluginLibPath(AnyDoorInfo.ANY_DOOR_ATTACH_JAR);
-            String paramPath = project.getBasePath() + "/.idea/any-door/AnyDoorParam.json";
-            VmUtil.attachAsync(String.valueOf(service.pid), anyDoorJarPath, jsonDtoStr, paramPath, errHandle);
-        } else {
-            HttpUtil.postAsyncByJdk(service.mvcAddress + ":" + service.mvcPort + service.mvcWebPathPrefix + "/any_door/run", jsonDtoStr, errHandle);
-        }
+        BeanSelectionService.execute(project, jsonDtoStr, service, errHandle);
     }
 
     /** Shared execution bridge for .anydoor request files. */
     public static void executeDirect(Project project, PsiClass psiClass, PsiMethod psiMethod, String content, @Nullable Long pid,
                                      @Nullable String resultPath, BiConsumer<String, Exception> errHandle) {
+        executeDirect(project, psiClass, psiMethod, content, pid, resultPath, null, null, errHandle);
+    }
+
+    public static void executeDirect(Project project, PsiClass psiClass, PsiMethod psiMethod, String content, @Nullable Long pid,
+                                     @Nullable String resultPath, @Nullable String beanName, @Nullable String beanContextId,
+                                     BiConsumer<String, Exception> errHandle) {
+        executeDirect(project, psiClass, psiMethod, content, pid, resultPath, beanName, beanContextId, errHandle, () -> { });
+    }
+
+    public static void executeDirect(Project project, PsiClass psiClass, PsiMethod psiMethod, String content, @Nullable Long pid,
+                                     @Nullable String resultPath, @Nullable String beanName, @Nullable String beanContextId,
+                                     BiConsumer<String, Exception> errHandle, Runnable onDispatch) {
+        executeDirect(project, psiClass, psiMethod, content, pid, resultPath, beanName, beanContextId, null, errHandle, onDispatch);
+    }
+
+    public static void executeDirect(Project project, PsiClass psiClass, PsiMethod psiMethod, String content, @Nullable Long pid,
+                                     @Nullable String resultPath, @Nullable String beanName, @Nullable String beanContextId,
+                                     @Nullable String classLoaderId, BiConsumer<String, Exception> errHandle, Runnable onDispatch) {
         AnyDoorSettingsState service = project.getService(AnyDoorSettingsState.class);
         if (pid != null) service.pid = pid;
         String body = JsonUtil.compressJson(content);
-        if (psiClass.isInterface()) {
-            body = JsonUtil.transformedKey(body, AnyDoorActionUtil.getParamTypeNameTransformer(psiMethod.getParameterList()));
-        }
+        body = AnyDoorActionUtil.prepareInvocationContent(psiClass, psiMethod, body);
         // A request file is interactive: synchronous mode is required to obtain a deterministic result.
-        String dto = getJsonDtoStr(project, psiClass.getQualifiedName(), psiMethod.getName(),
-                AnyDoorActionUtil.toParamTypeNameList(psiMethod.getParameterList()), body, true, null);
-        if (resultPath != null) dto = dto.substring(0, dto.length() - 1) + ",\"resultPath\":\"" + resultPath.replace("\\", "\\\\") + "\"}";
-        openAnyDoor(project, dto, service, errHandle);
+        JsonObject dto = JsonParser.parseString(getJsonDtoStr(project, psiClass.getQualifiedName(), psiMethod.getName(),
+                AnyDoorActionUtil.toParamTypeNameList(psiMethod.getParameterList()), body, true, null)).getAsJsonObject();
+        if (resultPath != null) dto.addProperty("resultPath", resultPath);
+        if (beanName != null && !beanName.isBlank()) dto.addProperty("beanName", beanName);
+        if (beanContextId != null && !beanContextId.isBlank()) dto.addProperty("beanContextId", beanContextId);
+        if (classLoaderId != null && !classLoaderId.isBlank()) dto.addProperty("classLoaderId", classLoaderId);
+        BeanSelectionService.execute(project, dto.toString(), service, errHandle, onDispatch);
     }
 
     @NotNull

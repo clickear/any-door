@@ -17,52 +17,46 @@
  
 package io.github.lgp547.anydoor.common.util;
 
-import org.springframework.aop.SpringProxy;
-import org.springframework.aop.TargetClassAware;
-import org.springframework.aop.framework.Advised;
-import org.springframework.lang.Nullable;
-import org.springframework.util.Assert;
-import org.springframework.util.ClassUtils;
-
 import java.lang.reflect.Proxy;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.Objects;
+import java.util.Set;
 
 public class AnyDoorAopUtil {
+    private static final String SPRING_PROXY = "org.springframework.aop.SpringProxy";
+    private static final String TARGET_CLASS_AWARE = "org.springframework.aop.TargetClassAware";
+    private static final String ADVISED = "org.springframework.aop.framework.Advised";
+    private static final String TARGET_SOURCE = "org.springframework.aop.TargetSource";
     
     public static Class<?> getTargetClass(Object candidate) {
-        Assert.notNull(candidate, "Candidate object must not be null");
-        Class<?> result = null;
-        if (candidate instanceof TargetClassAware) {
-            result = ((TargetClassAware) candidate).getTargetClass();
+        Objects.requireNonNull(candidate, "Candidate object must not be null");
+        if (AnyDoorReflectionUtil.isInstance(candidate, TARGET_CLASS_AWARE)) {
+            Class<?> type = (Class<?>) AnyDoorReflectionUtil.call(candidate, TARGET_CLASS_AWARE, "getTargetClass");
+            if (type != null) return type;
         }
-        if (result == null) {
-            result = (isCglibProxy(candidate) ? candidate.getClass().getSuperclass() : candidate.getClass());
-        }
-        return result;
+        return isCglibProxy(candidate) ? candidate.getClass().getSuperclass() : candidate.getClass();
     }
     
-    public static boolean isCglibProxy(@Nullable Object object) {
-        return (object instanceof SpringProxy &&
-                object.getClass().getName().contains(ClassUtils.CGLIB_CLASS_SEPARATOR));
+    public static boolean isCglibProxy(Object object) {
+        return AnyDoorReflectionUtil.isInstance(object, SPRING_PROXY) && object.getClass().getName().contains("$$");
     }
     
-    public static boolean isAopProxy(@Nullable Object object) {
-        return (object instanceof SpringProxy && (Proxy.isProxyClass(object.getClass()) ||
-                object.getClass().getName().contains(ClassUtils.CGLIB_CLASS_SEPARATOR)));
+    public static boolean isAopProxy(Object object) {
+        return AnyDoorReflectionUtil.isInstance(object, SPRING_PROXY)
+                && (Proxy.isProxyClass(object.getClass()) || isCglibProxy(object));
     }
     
     @SuppressWarnings("unchecked")
     public static <T> T getTargetObject(Object candidate) {
-        Assert.notNull(candidate, "Candidate must not be null");
-        try {
-            if (isAopProxy(candidate) && candidate instanceof Advised) {
-                Object target = ((Advised) candidate).getTargetSource().getTarget();
-                if (target != null) {
-                    return (T) getTargetObject(target);
-                }
-            }
-        } catch (Throwable ex) {
-            System.err.println("Failed to unwrap proxied object");
-            ex.printStackTrace();
+        Objects.requireNonNull(candidate, "Candidate must not be null");
+        Set<Object> visited = Collections.newSetFromMap(new IdentityHashMap<Object, Boolean>());
+        while (isAopProxy(candidate) && AnyDoorReflectionUtil.isInstance(candidate, ADVISED)) {
+            if (!visited.add(candidate)) throw new IllegalStateException("Circular Spring proxy target");
+            Object source = AnyDoorReflectionUtil.call(candidate, ADVISED, "getTargetSource");
+            Object target = AnyDoorReflectionUtil.call(source, TARGET_SOURCE, "getTarget");
+            if (target == null) throw new IllegalStateException("Selected Spring proxy has no target object");
+            candidate = target;
         }
         return (T) candidate;
     }

@@ -18,6 +18,7 @@
 package io.github.lgp547.anydoor.common.util;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -40,15 +41,27 @@ public class AnyDoorClassUtil {
     }
     
     public static Class<?> forName(String className) {
+        ClassLoader context = Thread.currentThread().getContextClassLoader();
+        try {
+            return forName(className, context);
+        } catch (IllegalArgumentException e) {
+            if (context == AnyDoorClassUtil.class.getClassLoader()) throw e;
+            return forName(className, AnyDoorClassUtil.class.getClassLoader());
+        }
+    }
+
+    public static Class<?> forName(String className, ClassLoader loader) {
         Class<?> clazz = PRIMITIVE_TYPE_MAP.get(className);
         if (clazz != null) {
             return clazz;
         }
+        if (className.endsWith("[]")) {
+            return Array.newInstance(forName(className.substring(0, className.length() - 2), loader), 0).getClass();
+        }
         try {
-            return Class.forName(className);
-        } catch (Exception e) {
-            System.err.println("not found class. className:" + className);
-            throw new IllegalArgumentException(e);
+            return Class.forName(className, false, loader);
+        } catch (ClassNotFoundException e) {
+            throw new IllegalArgumentException("Class not found in selected loader: " + className, e);
         }
     }
     
@@ -65,7 +78,8 @@ public class AnyDoorClassUtil {
         } else if (methods.size() == 1) {
             method = methods.get(0);
         } else {
-            Optional<Class<?>[]> classes = Optional.ofNullable(parameterTypes).map(item -> item.stream().map(AnyDoorClassUtil::forName).toArray(Class[]::new));
+            Optional<Class<?>[]> classes = Optional.ofNullable(parameterTypes).map(item -> item.stream()
+                    .map(name -> forName(name, clazz.getClassLoader())).toArray(Class[]::new));
             try {
                 method = clazz.getDeclaredMethod(methodName, classes.orElse(null));
             } catch (NoSuchMethodException e) {
@@ -75,6 +89,17 @@ public class AnyDoorClassUtil {
             }
         }
         return method;
+    }
+
+    public static String classLoaderId(ClassLoader loader) {
+        return loader == null ? "bootstrap" : Integer.toHexString(System.identityHashCode(loader));
+    }
+
+    public static ClassLoader executionClassLoader(Object bean, Method method, ClassLoader fallback) {
+        ClassLoader loader = bean == null ? null : AnyDoorAopUtil.getTargetClass(bean).getClassLoader();
+        if (loader != null) return loader;
+        loader = method == null ? null : method.getDeclaringClass().getClassLoader();
+        return loader == null ? fallback : loader;
     }
     
 }

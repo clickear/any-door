@@ -21,7 +21,7 @@ import io.github.lgp547.anydoor.support.HandlerMethod;
 import io.github.lgp547.anydoor.util.BeanUtil;
 import io.github.lgp547.anydoor.util.JsonUtil;
 import io.github.lgp547.anydoor.util.LambdaUtil;
-import org.springframework.aop.framework.AopProxy;
+import io.github.lgp547.anydoor.common.util.AnyDoorClassUtil;
 import org.springframework.core.DefaultParameterNameDiscoverer;
 import org.springframework.core.MethodParameter;
 import org.springframework.core.ResolvableType;
@@ -124,11 +124,10 @@ public class AnyDoorHandlerMethod extends HandlerMethod {
             if (bean instanceof Proxy) {
                 InvocationHandler invocationHandler = Proxy.getInvocationHandler(bean);
                 try {
-                    if (invocationHandler instanceof AopProxy) {
-                        return invocationHandler.invoke(bean, getBridgedMethod(), args);
-                    }
+                    // Preserve original parameter names and advice across isolated classloaders.
+                    return invocationHandler.invoke(bean, getBridgedMethod(), args);
                 } catch (Throwable e) {
-                    e.printStackTrace();
+                    throw new RuntimeException(e);
                 }
             }
             return getBridgedMethod().invoke(bean, args);
@@ -140,12 +139,7 @@ public class AnyDoorHandlerMethod extends HandlerMethod {
     }
 
     private ClassLoader getInvokeClassLoader(ClassLoader oldClassLoader) {
-        ClassLoader classLoader = Optional.ofNullable(getBridgedMethod()).map(Method::getDeclaringClass).map(Class::getClassLoader).orElse(null);
-        if (classLoader != null) {
-            return classLoader;
-        }
-        classLoader = Optional.ofNullable(getBean()).map(Object::getClass).map(Class::getClassLoader).orElse(null);
-        return classLoader != null ? classLoader : oldClassLoader;
+        return AnyDoorClassUtil.executionClassLoader(getBean(), getBridgedMethod(), oldClassLoader);
     }
     
     protected Object[] getArgs(Map<String, Object> contentMap) {

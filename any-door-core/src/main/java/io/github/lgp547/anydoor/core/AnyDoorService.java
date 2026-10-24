@@ -45,19 +45,19 @@ public class AnyDoorService {
         try {
             anyDoorDto.verify();
             JsonUtil.applyConfig(anyDoorDto.getJsonTimezone(), anyDoorDto.getJsonDateTimeFormat());
-            Class<?> clazz = Class.forName(anyDoorDto.getClassName());
-            Method method = AnyDoorClassUtil.getMethod(clazz, anyDoorDto.getMethodName(), anyDoorDto.getParameterTypes());
-            
-            boolean containsBean = AnyDoorSpringUtil.containsBean(clazz);
-            Object bean;
-            if (!containsBean) {
-                bean = AnyDoorBeanUtil.instantiate(clazz);
-            } else {
-                bean = AnyDoorSpringUtil.getBean(clazz);
-                if (!Modifier.isPublic(method.getModifiers())) {
-                    bean = AnyDoorAopUtil.getTargetObject(bean);
-                }
+            Class<?> clazz = AnyDoorClassUtil.forName(anyDoorDto.getClassName());
+            if (anyDoorDto.getClassLoaderId() != null && !anyDoorDto.getClassLoaderId().isEmpty()
+                    && !anyDoorDto.getClassLoaderId().equals(AnyDoorClassUtil.classLoaderId(clazz.getClassLoader()))) {
+                throw new IllegalArgumentException("Application class not found in selected classLoaderId: " + anyDoorDto.getClassLoaderId());
             }
+            if (anyDoorDto.isListBeans()) return AnyDoorSpringUtil.listBeans(clazz);
+            Method method = AnyDoorClassUtil.getMethod(clazz, anyDoorDto.getMethodName(), anyDoorDto.getParameterTypes());
+
+            Object bean = AnyDoorSpringUtil.resolveBean(clazz, anyDoorDto.getBeanName(), anyDoorDto.getBeanContextId());
+            if (bean == null) {
+                bean = AnyDoorBeanUtil.instantiate(clazz);
+            }
+            if (!Modifier.isPublic(method.getModifiers())) bean = AnyDoorAopUtil.getTargetObject(bean);
             return doRun(anyDoorDto, method, bean, () -> {
             }, () -> {
             });
@@ -97,18 +97,18 @@ public class AnyDoorService {
     }
 
     private static ClassLoader getRunClassLoader(Method method, Object bean, ClassLoader oldClassLoader) {
-        ClassLoader classLoader = Optional.ofNullable(method).map(Method::getDeclaringClass).map(Class::getClassLoader).orElse(null);
-        if (classLoader != null) {
-            return classLoader;
-        }
-        classLoader = Optional.ofNullable(bean).map(Object::getClass).map(Class::getClassLoader).orElse(null);
-        return classLoader != null ? classLoader : oldClassLoader;
+        return AnyDoorClassUtil.executionClassLoader(bean, method, oldClassLoader);
     }
     
     public Object doRun(AnyDoorRunDto anyDoorDto, Method method, Object bean, Runnable startRun, Runnable endRun) {
-        String methodName = method.getName();
-        String content = JsonUtil.toStrNotExc(anyDoorDto.getContent());
-        return handleAndRun(anyDoorDto, method, bean, startRun, endRun, content, methodName);
+        ClassLoader original = Thread.currentThread().getContextClassLoader();
+        try {
+            Thread.currentThread().setContextClassLoader(getRunClassLoader(method, bean, original));
+            String content = JsonUtil.toStrNotExc(anyDoorDto.getContent());
+            return handleAndRun(anyDoorDto, method, bean, startRun, endRun, content, method.getName());
+        } finally {
+            Thread.currentThread().setContextClassLoader(original);
+        }
     }
     
     private static Object handleAndRun(AnyDoorRunDto anyDoorDto, Method method, Object bean, Runnable startRun, Runnable endRun, String content, String methodName) {
