@@ -7,6 +7,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.util.xmlb.XmlSerializerUtil;
 import io.github.lgp547.anydoorplugin.dto.ParamCacheDto;
 import io.github.lgp547.anydoorplugin.data.domain.ParamCollection;
+import io.github.lgp547.anydoorplugin.request.RequestHistoryItem;
 import io.github.lgp547.anydoorplugin.util.JsonUtil;
 import io.github.lgp547.anydoorplugin.util.NotifierUtil;
 import org.jetbrains.annotations.NotNull;
@@ -33,6 +34,8 @@ public class AnyDoorSettingsState implements PersistentStateComponent<AnyDoorSet
 
     /** Local-only Postman-style navigation. Methods are referenced, never copied. */
     public List<ParamCollection> paramCollections = new ArrayList<>();
+
+    public List<RequestHistoryItem> requestHistory = new ArrayList<>();
 
     public Integer runProjectStrategy = 100; // 100 is Java attach, 200 is Spring mvc.
 

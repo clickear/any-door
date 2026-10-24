@@ -57,6 +57,9 @@ public class AnyDoorRunDto {
     private String jsonTimezone;
 
     private String jsonDateTimeFormat;
+
+    /** Optional local hand-off file used by IDE request files to receive the invocation result. */
+    private String resultPath;
     
     public String getClassName() {
         return className;
@@ -145,6 +148,10 @@ public class AnyDoorRunDto {
     public void setJsonDateTimeFormat(String jsonDateTimeFormat) {
         this.jsonDateTimeFormat = jsonDateTimeFormat;
     }
+
+    public String getResultPath() { return resultPath; }
+
+    public void setResultPath(String resultPath) { this.resultPath = resultPath; }
     
     public void verify() {
         Assert.notNull(className, "className is required");
@@ -178,6 +185,7 @@ public class AnyDoorRunDto {
         String projectBasePath = substringBetween(anyDoorDtoStr, "\"projectBasePath\":\"", "\"");
         String jsonTimezone = substringBetween(anyDoorDtoStr, "\"jsonTimezone\":\"", "\"");
         String jsonDateTimeFormat = substringBetween(anyDoorDtoStr, "\"jsonDateTimeFormat\":\"", "\"");
+        String resultPath = substringBetween(anyDoorDtoStr, "\"resultPath\":\"", "\"");
         List<String> parameterTypes = parseList(anyDoorDtoStr, "parameterTypes");
         List<String> jarPaths = parseList(anyDoorDtoStr, "jarPaths");
         
@@ -189,6 +197,7 @@ public class AnyDoorRunDto {
         anyDoorRunDto.setProjectBasePath(projectBasePath);
         anyDoorRunDto.setJsonTimezone(jsonTimezone);
         anyDoorRunDto.setJsonDateTimeFormat(jsonDateTimeFormat);
+        anyDoorRunDto.setResultPath(resultPath);
         return anyDoorRunDto;
     }
     

@@ -124,6 +124,22 @@ public class AnyDoorPerformed {
         }
     }
 
+    /** Shared execution bridge for .anydoor request files. */
+    public static void executeDirect(Project project, PsiClass psiClass, PsiMethod psiMethod, String content, @Nullable Long pid,
+                                     @Nullable String resultPath, BiConsumer<String, Exception> errHandle) {
+        AnyDoorSettingsState service = project.getService(AnyDoorSettingsState.class);
+        if (pid != null) service.pid = pid;
+        String body = JsonUtil.compressJson(content);
+        if (psiClass.isInterface()) {
+            body = JsonUtil.transformedKey(body, AnyDoorActionUtil.getParamTypeNameTransformer(psiMethod.getParameterList()));
+        }
+        // A request file is interactive: synchronous mode is required to obtain a deterministic result.
+        String dto = getJsonDtoStr(project, psiClass.getQualifiedName(), psiMethod.getName(),
+                AnyDoorActionUtil.toParamTypeNameList(psiMethod.getParameterList()), body, true, null);
+        if (resultPath != null) dto = dto.substring(0, dto.length() - 1) + ",\"resultPath\":\"" + resultPath.replace("\\", "\\\\") + "\"}";
+        openAnyDoor(project, dto, service, errHandle);
+    }
+
     @NotNull
     private static String getJsonDtoStr(Project project, String className, String methodName, List<String> paramTypeNameList, String content, boolean isSync, @Nullable ParamCacheDto paramCacheDto) {
         JsonObject jsonObjectReq = new JsonObject();

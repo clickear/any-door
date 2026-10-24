@@ -36,6 +36,8 @@ import java.net.URLClassLoader;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.time.Instant;
 
 public class AnyDoorAttach {
     
@@ -81,11 +83,24 @@ public class AnyDoorAttach {
             Object anyDoorService = anyDoorServiceClass.getConstructor().newInstance();
             Method run = anyDoorServiceClass.getMethod("run", String.class, Method.class, Object.class, Runnable.class, Runnable.class);
             Runnable endRun = anyDoorClassloader::forceClose;
-            run.invoke(anyDoorService, anyDoorDtoStr, method, instance, startRun, endRun);
+            Object result = run.invoke(anyDoorService, anyDoorDtoStr, method, instance, startRun, endRun);
+            writeResult(anyDoorRunDto.getResultPath(), result, null);
         } catch (Exception e) {
+            writeResult(anyDoorRunDto.getResultPath(), null, e);
             System.err.println("any_door agentmain error. anyDoorDtoStr[" + anyDoorDtoStr + "]");
             e.printStackTrace();
         }
+    }
+
+    private static void writeResult(String resultPath, Object result, Exception error) {
+        if (resultPath == null || resultPath.isEmpty()) return;
+        try {
+            String status = error == null ? "success" : "error";
+            String payload = error == null ? String.valueOf(result) : error.toString();
+            String escaped = payload.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r");
+            String json = "{\"status\":\"" + status + "\",\"time\":" + Instant.now().toEpochMilli() + ",\"result\":\"" + escaped + "\"}";
+            Files.write(Paths.get(resultPath), json.getBytes(StandardCharsets.UTF_8));
+        } catch (Exception ignored) { }
     }
     
     private static Runnable getStartRunnable(Instrumentation inst, AnyDoorRunDto anyDoorRunDto) {

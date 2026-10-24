@@ -82,6 +82,8 @@
                              id="io.github.lgp547.anydoorplugin.settings.AnyDoorSettingsConfigurable"
                              displayName="Any Door" nonDefaultProject="true"/>
         <projectService serviceImplementation="io.github.lgp547.anydoorplugin.settings.AnyDoorSettingsState"/>
+        <projectService serviceImplementation="io.github.lgp547.anydoorplugin.request.AnyDoorRequestGutterService"/>
+        <postStartupActivity implementation="io.github.lgp547.anydoorplugin.request.AnyDoorRequestStartupActivity"/>
 
         <!-- Add your extensions here -->
         <!-- 配置 File -> Settings -> Tools -->
@@ -92,6 +94,24 @@
         <toolWindow id="Any-Door" secondary="false" anchor="right"
                     icon="io.github.lgp547.anydoorplugin.util.AnyDoorIcons.default_icon"
                     factoryClass="io.github.lgp547.anydoorplugin.action.ParamListMenuToolWindow"/>
+        <fileType name="AnyDoor Request" implementationClass="io.github.lgp547.anydoorplugin.request.AnyDoorRequestFileType" fieldName="INSTANCE" extensions="anydoor" language="AnyDoor"/>
+        <lang.parserDefinition language="AnyDoor" implementationClass="io.github.lgp547.anydoorplugin.request.AnyDoorParserDefinition"/>
+        <lang.syntaxHighlighterFactory language="AnyDoor" implementationClass="io.github.lgp547.anydoorplugin.request.AnyDoorSyntaxHighlighterFactory"/>
+        <colorSettingsPage implementation="io.github.lgp547.anydoorplugin.request.AnyDoorColorSettingsPage"/>
+        <lang.foldingBuilder language="AnyDoor" implementationClass="io.github.lgp547.anydoorplugin.request.AnyDoorFoldingBuilder"/>
+        <lang.structureViewBuilderFactory language="AnyDoor" implementationClass="io.github.lgp547.anydoorplugin.request.AnyDoorStructureViewFactory"/>
+        <completion.contributor implementationClass="io.github.lgp547.anydoorplugin.request.AnyDoorCompletionContributor" language="AnyDoor"/>
+        <completion.contributor implementationClass="io.github.lgp547.anydoorplugin.request.AnyDoorJsonCompletionContributor" language="JSON"/>
+        <typedHandler implementation="io.github.lgp547.anydoorplugin.request.AnyDoorTypedHandler"/>
+        <annotator language="AnyDoor" implementationClass="io.github.lgp547.anydoorplugin.request.AnyDoorAnnotator"/>
+        <psi.referenceContributor language="AnyDoor" implementation="io.github.lgp547.anydoorplugin.request.AnyDoorRunReferenceContributor"/>
+        <gotoDeclarationHandler implementation="io.github.lgp547.anydoorplugin.request.AnyDoorGotoDeclarationHandler"/>
+        <lang.directNavigationProvider implementation="io.github.lgp547.anydoorplugin.request.AnyDoorRunNavigationProvider"/>
+        <languageInjector implementation="io.github.lgp547.anydoorplugin.request.AnyDoorJsonInjector"/>
+        <intentionAction>
+            <className>io.github.lgp547.anydoorplugin.request.FormatAnyDoorJsonIntention</className>
+            <category>AnyDoor</category>
+        </intentionAction>
 
         <!-- notice -->
         <applicationService serviceImplementation="io.github.lgp547.anydoorplugin.util.NotifierUtil"/>
@@ -108,6 +128,22 @@
     </extensions>
 
     <actions>
+        <action id="AnyDoorPlugin.FormatRequestJsonAction" class="io.github.lgp547.anydoorplugin.request.FormatAnyDoorJsonAction" text="Format AnyDoor JSON Body" description="Format the JSON body of the request at the caret">
+            <add-to-group group-id="EditorPopupMenu" anchor="first"/>
+        </action>
+        <action id="AnyDoorPlugin.GenerateRequestAction"
+                class="io.github.lgp547.anydoorplugin.request.GenerateAnyDoorRequestAction"
+                text="Generate .anydoor Request"
+                description="Create an editable AnyDoor request from this method">
+            <add-to-group group-id="EditorPopupMenu" anchor="first"/>
+        </action>
+        <action id="AnyDoorPlugin.RunRequestAction"
+                class="io.github.lgp547.anydoorplugin.request.RunAnyDoorRequestAction"
+                text="Run AnyDoor Request"
+                description="Run the request at the current .anydoor file"
+                icon="io.github.lgp547.anydoorplugin.util.AnyDoorIcons.default_icon">
+            <add-to-group group-id="EditorPopupMenu" anchor="first"/>
+        </action>
         <action id="AnyDoorPlugin.AnyDoorOpenAction"
                 class="io.github.lgp547.anydoorplugin.action.AnyDoorOpenAction"
                 text="Open AnyDoor"

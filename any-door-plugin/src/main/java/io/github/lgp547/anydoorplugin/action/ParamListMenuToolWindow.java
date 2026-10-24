@@ -7,6 +7,7 @@ import com.intellij.openapi.wm.ToolWindowFactory;
 import com.intellij.ui.content.Content;
 import com.intellij.ui.content.ContentFactory;
 import io.github.lgp547.anydoorplugin.dialog.ParamLibraryPanel;
+import io.github.lgp547.anydoorplugin.request.AnyDoorRequestsPanel;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -23,10 +24,13 @@ public class ParamListMenuToolWindow implements ToolWindowFactory {
         // 获取内容工厂的实例
         ContentFactory contentFactory = ApplicationManager.getApplication().getService(ContentFactory.class);
         // 获取 ToolWindow 显示的内容
-        Content content = contentFactory.createContent(ui, "", false);
+        Content content = contentFactory.createContent(ui, "Parameter Library", false);
         content.setDisposer(ui);
         // 设置 ToolWindow 显示的内容
         toolWindow.getContentManager().addContent(content);
+        AnyDoorRequestsPanel requests = new AnyDoorRequestsPanel(project);
+        Content requestContent = contentFactory.createContent(requests, "Requests", false);
+        toolWindow.getContentManager().addContent(requestContent);
         //初始化数据
 
         // 全局使用
