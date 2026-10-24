@@ -11,12 +11,15 @@ import java.util.function.BiConsumer;
 public class HttpUtil {
 
     public static void postAsyncByJdk(String urlStr, String reqBody, BiConsumer<String, Exception> errHandle) {
-        CompletableFuture.runAsync(() -> {
-            try {
-                postByJdk(urlStr, reqBody, 0);
-            } catch (Exception e) {
-                errHandle.accept(urlStr, e);
-            }
+        postAsync(urlStr, reqBody).whenComplete((ignored, failure) -> {
+            if (failure != null) errHandle.accept(urlStr, unwrap(failure));
+        });
+    }
+
+    public static CompletableFuture<String> postAsync(String urlStr, String reqBody) {
+        return CompletableFuture.supplyAsync(() -> {
+            try { return postByJdk(urlStr, reqBody, 0); }
+            catch (Exception e) { throw new java.util.concurrent.CompletionException(e); }
         });
     }
 
@@ -37,7 +40,11 @@ public class HttpUtil {
                 os.write(reqBody.getBytes(StandardCharsets.UTF_8));
             }
             if (con.getResponseCode() != 200) {
-                throw new IllegalArgumentException("response {code:" + con.getResponseCode() + ", msg:" + con.getResponseMessage() + "}");
+                String body = "";
+                InputStream error = con.getErrorStream();
+                if (error != null) try (InputStream input = error) { body = new String(input.readAllBytes(), StandardCharsets.UTF_8); }
+                throw new IllegalArgumentException("response {code:" + con.getResponseCode() + ", msg:" + con.getResponseMessage() + "}"
+                        + (body.isBlank() ? "" : "\n" + body));
             }
             try (InputStream input = con.getInputStream()) {
                 return new String(input.readAllBytes(), StandardCharsets.UTF_8);
@@ -45,5 +52,10 @@ public class HttpUtil {
         } finally {
             con.disconnect();
         }
+    }
+
+    private static Exception unwrap(Throwable failure) {
+        Throwable value = failure instanceof java.util.concurrent.CompletionException && failure.getCause() != null ? failure.getCause() : failure;
+        return value instanceof Exception ? (Exception) value : new IllegalStateException(value);
     }
 }

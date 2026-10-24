@@ -25,6 +25,13 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <strong>2.8.0 返回结果查看器</strong>
+        <ul>
+            <li>普通调用和 .anydoor 请求统一展示结构化返回结果、异常与耗时</li>
+            <li>支持 JSON 树、原文、字段搜索、复制字段值、JSONPath 和完整 JSON</li>
+            <li>异步及批量调用在实际完成后更新结果，并保留批量结果顺序</li>
+            <li>大结果树限制节点和深度，完整内容仍可在原文视图查看和复制</li>
+        </ul>
         <strong>2.7.1 上游改进整合</strong>
         <ul>
             <li>Agent 依赖包在构建时生成，改善 Run/Debug 启动卡顿</li>

@@ -8,6 +8,7 @@ import com.intellij.psi.PsiMethod;
 import com.intellij.psi.search.GlobalSearchScope;
 import io.github.lgp547.anydoorplugin.action.AnyDoorPerformed;
 import io.github.lgp547.anydoorplugin.settings.AnyDoorSettingsState;
+import io.github.lgp547.anydoorplugin.result.InvocationResultCodec;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.io.FileUtil;
@@ -72,7 +73,10 @@ public final class AnyDoorRequestRunner {
             while (System.currentTimeMillis() < timeout && !file.exists()) try { Thread.sleep(100); } catch (InterruptedException ignored) { return; }
             String result = "超时：目标 JVM 未在限定时间内返回结果";
             if (file.exists()) {
-                try { result = FileUtil.loadFile(file); } catch (java.io.IOException ignored) { result = "读取目标 JVM 返回结果失败"; }
+                try {
+                    InvocationResultCodec.Decoded decoded = InvocationResultCodec.decodeAttach(FileUtil.loadFile(file));
+                    result = decoded.error() == null ? decoded.json() : "失败：" + decoded.error();
+                } catch (Exception ignored) { result = "读取目标 JVM 返回结果失败"; }
             }
             RequestResultService.instance(project).put(request.name(), result);
             RequestHistoryService.instance(project).add(request.name(), "结果", result.length() > 120 ? result.substring(0, 120) + "…" : result);
