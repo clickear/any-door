@@ -60,6 +60,22 @@ public class AnyDoorRunDto {
 
     /** Optional local hand-off file used by IDE request files to receive the invocation result. */
     private String resultPath;
+
+    private String beanName;
+    private String beanContextId;
+    private String classLoaderId;
+    /** "listBeans" performs discovery only; absent means invoke the method. */
+    private String operation;
+
+    public String getBeanName() { return beanName; }
+    public void setBeanName(String beanName) { this.beanName = beanName; }
+    public String getBeanContextId() { return beanContextId; }
+    public void setBeanContextId(String beanContextId) { this.beanContextId = beanContextId; }
+    public String getClassLoaderId() { return classLoaderId; }
+    public void setClassLoaderId(String classLoaderId) { this.classLoaderId = classLoaderId; }
+    public String getOperation() { return operation; }
+    public void setOperation(String operation) { this.operation = operation; }
+    public boolean isListBeans() { return "listBeans".equals(operation); }
     
     public String getClassName() {
         return className;
@@ -155,11 +171,11 @@ public class AnyDoorRunDto {
     
     public void verify() {
         Assert.notNull(className, "className is required");
-        Assert.notNull(methodName, "methodName is required");
+        if (!isListBeans()) Assert.notNull(methodName, "methodName is required");
     }
     
     public boolean verifyPassByAttach() {
-        return className != null && methodName != null && jarPaths != null;
+        return className != null && (isListBeans() || methodName != null) && jarPaths != null;
     }
     
     @Override
@@ -167,6 +183,8 @@ public class AnyDoorRunDto {
         return "AnyDoorRunDto{" +
                 "className='" + className + '\'' +
                 ", methodName='" + methodName + '\'' +
+                ", beanName='" + beanName + '\'' +
+                ", beanContextId='" + beanContextId + '\'' +
                 ", content=" + content +
                 ", parameterTypes=" + parameterTypes +
                 ", isSync=" + isSync +
@@ -198,7 +216,36 @@ public class AnyDoorRunDto {
         anyDoorRunDto.setJsonTimezone(jsonTimezone);
         anyDoorRunDto.setJsonDateTimeFormat(jsonDateTimeFormat);
         anyDoorRunDto.setResultPath(resultPath);
+        anyDoorRunDto.setBeanName(readJsonString(anyDoorDtoStr, "beanName"));
+        anyDoorRunDto.setBeanContextId(readJsonString(anyDoorDtoStr, "beanContextId"));
+        anyDoorRunDto.setClassLoaderId(readJsonString(anyDoorDtoStr, "classLoaderId"));
+        anyDoorRunDto.setOperation(substringBetween(anyDoorDtoStr, "\"operation\":\"", "\""));
         return anyDoorRunDto;
+    }
+
+    private static String readJsonString(String json, String key) {
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("\"" + key + "\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\"").matcher(json);
+        if (!matcher.find()) return null;
+        String encoded = matcher.group(1);
+        StringBuilder value = new StringBuilder();
+        for (int i = 0; i < encoded.length(); i++) {
+            char c = encoded.charAt(i);
+            if (c != '\\') { value.append(c); continue; }
+            char escaped = encoded.charAt(++i);
+            switch (escaped) {
+                case 'b': value.append('\b'); break;
+                case 'f': value.append('\f'); break;
+                case 'n': value.append('\n'); break;
+                case 'r': value.append('\r'); break;
+                case 't': value.append('\t'); break;
+                case 'u':
+                    value.append((char) Integer.parseInt(encoded.substring(i + 1, i + 5), 16));
+                    i += 4;
+                    break;
+                default: value.append(escaped);
+            }
+        }
+        return value.toString();
     }
     
     public static String AnyDoorInjectedClassName = "AnyDoorInjectedClass";

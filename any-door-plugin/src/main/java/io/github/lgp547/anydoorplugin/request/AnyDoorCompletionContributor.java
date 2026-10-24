@@ -44,7 +44,7 @@ public final class AnyDoorCompletionContributor extends CompletionContributor {
             return;
         }
         if (line.trim().startsWith("@")) {
-            for (String directive : new String[]{"@name = ", "@pid = ", "@target = ", "@timeout = 10s", "@mode = live", "@confirm = destructive"}) output.addElement(LookupElementBuilder.create(directive));
+            for (String directive : new String[]{"@name = ", "@pid = ", "@target = ", "@beanName = ", "@beanContextId = ", "@classLoaderId = ", "@timeout = 10s", "@mode = live", "@confirm = destructive"}) output.addElement(LookupElementBuilder.create(directive));
             return;
         }
         String trimmedLine = line.trim();
